@@ -2,6 +2,10 @@ import { test, expect } from 'bun:test'
 import { checkAbn, eligibleForAuthorisation, prepareSupplier } from '../src/features/suppliers/verification'
 import { calculateQuote, formatCents } from '../src/features/negotiation/calculator'
 import { assessConversation } from '../src/features/negotiation/signals'
+import { defaultNegotiationPolicy, evaluateNegotiation } from '../src/features/negotiation/policy'
+import { checkContactPolicy } from '../src/features/voice/trustPolicy'
+import { demoCandidates, discoveryProfiles, rankCandidates } from '../src/features/discovery/engine'
+import { previewNormalize } from '../src/features/intake/schema'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -41,4 +45,29 @@ test('stop requests override other cues and repeated offers stop bargaining',()=
  expect(assessConversation('This is our final offer').action).toBe('confirm')
  expect(assessConversation('The total is $315',2).action).toBe('confirm')
  expect(assessConversation('The total is $315').tone).toBe('No clear sentiment cue')
+})
+test('supplier discovery applies hard gates before weighted ranking',()=>{
+ const results=rankCandidates(demoCandidates,discoveryProfiles[0])
+ expect(results[0].candidate.name).toBe('Southbank Produce Co')
+ expect(results.at(-1)?.eligible).toBe(false)
+ expect(results.at(-1)?.blockers.join(' ')).toContain('authorised')
+})
+test('negotiation bounds counter then escalate and never override a stop',()=>{
+ const base={totalCents:36000n,paymentDays:7,depositBps:1000,counteroffersMade:0,isSubstitution:false,termsConfirmed:true}
+ expect(evaluateNegotiation(defaultNegotiationPolicy,base).action).toBe('counter')
+ expect(evaluateNegotiation(defaultNegotiationPolicy,{...base,counteroffersMade:2}).action).toBe('escalate')
+ expect(evaluateNegotiation(defaultNegotiationPolicy,{...base,supplierAskedToStop:true}).action).toBe('stop')
+})
+test('contact policy blocks unverified, repeated and out-of-hours calls',()=>{
+ const result=checkContactPolicy({abnVerified:false,authorised:true,optedOut:false,localHour:18,attemptsToday:2,businessName:'Cafe',callbackNumber:'03 9000 0000'})
+ expect(result.allowed).toBe(false)
+ expect(result.blockers).toHaveLength(3)
+})
+test('all intake channels normalize to the same fields with evidence',()=>{
+ const result=previewNormalize('email','Need 30 kg of chicken breast, budget up to $350. Please quote net 14 days.')
+ expect(result.item).toBe('chicken breast')
+ expect(result.quantity).toBe(30)
+ expect(result.budgetCents).toBe(35000)
+ expect(result.paymentDays).toBe(14)
+ expect(result.evidence.length).toBeGreaterThan(2)
 })

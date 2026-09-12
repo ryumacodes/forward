@@ -134,9 +134,10 @@ button, input, textarea, select { touch-action: manipulation; }
   .voice-dialog input,.voice-dialog select { scroll-margin-top: 120px; scroll-margin-bottom: 90px; }
   .voice-dialog form { padding-bottom: 8px; }
 }
-.supplier-import,.negotiation-tools { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+.supplier-import,.negotiation-tools,.policy-panel { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
 .negotiation-tools { margin-top: 24px; }
-.supplier-import .section-header p,.negotiation-tools .section-header p { font-size: 14px; color: #6b7891; margin-top: 8px; line-height: 1.5; }
+.policy-panel { margin-top: 24px; }
+.supplier-import .section-header p,.negotiation-tools .section-header p,.policy-panel .section-header p { font-size: 14px; color: #6b7891; margin-top: 8px; line-height: 1.5; }
 .import-empty { display: flex; gap: 12px; align-items: center; color: #6b7891; padding: 20px 0; font-size: 14px; line-height: 1.6; }
 .import-record { border-top: 1px solid var(--border); padding: 20px 0; }
 .import-record p,.import-record li { font-size: 14px; line-height: 1.7; color: #6b7891; }
@@ -156,6 +157,27 @@ button, input, textarea, select { touch-action: manipulation; }
 .signal-result blockquote { margin: 16px 0 0; border-left: 2px solid #164cc8; padding-left: 12px; font-size: 15px; line-height: 1.7; }
 @media (min-width: 1100px) { .tool-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 767px) { .supplier-import,.negotiation-tools { padding: 18px; } .supplier-import .primary { width: 100%; min-height: 48px; } .math-inputs { grid-template-columns: 1fr; gap: 0; } .tool-card { padding: 14px; } }
+.policy-layout { display:grid; grid-template-columns:minmax(240px,.72fr) minmax(0,1.28fr); gap:24px; }
+.policy-settings label { display:flex; flex-direction:column; gap:8px; font-size:13px; font-weight:600; }
+.policy-settings select { min-height:46px; padding:10px; border:1px solid var(--border); border-radius:6px; background:#fff; color:#172b4d; font-size:16px; }
+.policy-settings>p,.policy-panel>.voice-message { color:#6b7891; line-height:1.6; margin:12px 0 18px; }
+.weight-list { display:grid; gap:11px; }
+.weight-list>div { display:grid; grid-template-columns:112px minmax(50px,1fr) 35px; gap:10px; align-items:center; font-size:12px; }
+.weight-list strong { text-align:right; font-variant-numeric:tabular-nums; }
+.weight-track { height:6px; background:#edf2fa; border-radius:99px; overflow:hidden; }
+.weight-track i { display:block; height:100%; max-width:100%; background:#164cc8; border-radius:inherit; }
+.pipeline { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+.pipeline span { display:flex; align-items:center; gap:6px; padding:8px 10px; background:#edf3ff; color:#315792; border-radius:6px; font-size:11px; }
+.candidate-row { display:grid; grid-template-columns:30px minmax(0,1fr) auto; gap:12px; align-items:center; padding:16px 0; border-bottom:1px solid var(--border); }
+.candidate-row.blocked { opacity:.68; }
+.candidate-rank { width:28px; height:28px; display:grid; place-items:center; border-radius:6px; color:#164cc8; background:#edf3ff; font-weight:700; }
+.candidate-row strong { font-size:14px; }.candidate-row p { color:#6b7891; font-size:12px; line-height:1.5; margin-top:5px; }.candidate-row b { font-size:20px; font-variant-numeric:tabular-nums; }.candidate-row small { display:block; color:#8090aa; font-size:10px; font-weight:500; }
+.guardrail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.guardrail-grid article { border:1px solid var(--border); border-radius:8px; padding:18px; }.guardrail-grid h3 { font-size:18px; margin:9px 0 14px; }.guardrail-grid p,.guardrail-grid blockquote { color:#60728e; line-height:1.65; font-size:13px; }.guardrail-grid blockquote { margin:0; border-left:2px solid #164cc8; padding-left:12px; }.guardrail-grid ul { list-style:none; padding:0; margin:0; display:grid; gap:10px; }.guardrail-grid li { display:flex; align-items:flex-start; gap:8px; color:#60728e; font-size:13px; line-height:1.5; }.guardrail-grid li svg { color:#3d8b66; margin-top:2px; }
+.model-note { display:flex; gap:12px; padding:17px; margin-top:16px; background:#f4f7fd; border-radius:8px; color:#24487f; }.model-note p { color:#60728e; line-height:1.6; margin-top:5px; font-size:13px; }
+.intake-layout { display:grid; grid-template-columns:minmax(260px,.9fr) minmax(0,1.1fr); gap:18px; }.normalized-card { padding:20px; border:1px solid var(--border); border-radius:8px; }.normalized-head { display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; align-items:center; padding-bottom:18px; border-bottom:1px solid var(--border); }.normalized-head>svg { padding:10px; width:40px; height:40px; background:#edf3ff; color:#164cc8; border-radius:8px; }.normalized-head span,.normalized-head small { display:block; color:#6b7891; font-size:11px; }.normalized-head strong { display:block; margin-top:3px; text-transform:capitalize; }.normalized-head b { font-size:20px; text-align:right; }.normalized-card dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:20px 0; }.normalized-card dl div { min-width:0; }.normalized-card dt { color:#7585a0; font-size:11px; margin-bottom:5px; }.normalized-card dd { margin:0; font-size:14px; font-weight:600; overflow-wrap:anywhere; }.normalized-card summary { cursor:pointer; color:#28549a; }.normalized-card details p { color:#60728e; margin-top:10px; line-height:1.5; font-size:12px; }
+@media (max-width: 800px) { .policy-layout,.guardrail-grid,.intake-layout { grid-template-columns:1fr; } }
+@media (max-width: 767px) { .policy-panel { padding:18px; } .weight-list>div { grid-template-columns:100px minmax(40px,1fr) 34px; } .candidate-row { grid-template-columns:30px minmax(0,1fr); }.candidate-row>b { grid-column:2; display:flex; gap:3px; font-size:16px; }.candidate-row small { display:inline; }.pipeline { display:grid; }.pipeline span { min-height:42px; }.normalized-card dl { grid-template-columns:1fr 1fr; }.normalized-head b { font-size:16px; } }
 .auth-screen { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; max-width: 480px; padding: 24px; margin: auto; gap: 16px; }
 .auth-screen form { width: 100%; }
 .auth-screen h1 { margin: 18px 0; }

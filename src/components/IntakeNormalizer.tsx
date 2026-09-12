@@ -1,0 +1,12 @@
+import { useState } from 'react'
+import { FileText, Mail, MessageSquare, Mic } from 'lucide-react'
+import { previewNormalize, type IntakeSource } from '../features/intake/schema'
+
+const sourceLabels: Record<IntakeSource,string> = {voice_call:'Voice call',voice_note:'Voice note',email:'Email',sms:'SMS',form:'Web form'}
+
+export function IntakeNormalizer() {
+  const [source,setSource] = useState<IntakeSource>('voice_note')
+  const [text,setText] = useState('Need 30 kg of chicken breast by 8 am, budget up to $350. Ask for net 14 days and no deposit.')
+  const result = previewNormalize(source,text)
+  return <section className="policy-panel"><div className="section-header"><div><h2>One intake pipeline</h2><p>Every channel becomes the same reviewable dashboard result.</p></div><span className="demo-badge">Extraction preview</span></div><div className="intake-layout"><div className="tool-card"><label>Source<select value={source} onChange={event => setSource(event.target.value as IntakeSource)}>{Object.entries(sourceLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Message or transcript<textarea rows={6} value={text} onChange={event => setText(event.target.value)}/></label><p className="voice-message">The deployed Edge Function uses a strict schema. This browser preview uses transparent patterns so it never sends your text.</p></div><article className="normalized-card"><div className="normalized-head">{source === 'email' ? <Mail/> : source === 'sms' ? <MessageSquare/> : source === 'form' ? <FileText/> : <Mic/>}<div><span>{sourceLabels[source]}</span><strong>{result.intent.replace('_',' ')}</strong></div><b>{Math.round(result.confidence * 100)}%<small>confidence</small></b></div><dl><div><dt>Item</dt><dd>{result.item ?? 'Needs review'}</dd></div><div><dt>Quantity</dt><dd>{result.quantity ? `${result.quantity} ${result.unit}` : 'Needs review'}</dd></div><div><dt>Budget</dt><dd>{result.budgetCents != null ? `$${(result.budgetCents / 100).toFixed(2)}` : 'Needs review'}</dd></div><div><dt>Payment</dt><dd>{result.paymentDays != null ? `Net ${result.paymentDays}` : 'Not stated'}</dd></div><div><dt>Conversation cue</dt><dd>{result.sentimentCue.replace('_',' ')}</dd></div><div><dt>Missing</dt><dd>{result.missingFields.join(', ') || 'None'}</dd></div></dl><details><summary>Evidence used</summary>{result.evidence.map((item,index) => <p key={`${item.field}-${index}`}><strong>{item.field}</strong> “{item.text}”</p>)}</details></article></div></section>
+}
