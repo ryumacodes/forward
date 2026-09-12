@@ -393,6 +393,9 @@ verify_jwt = true
 [functions.start-supplier-call]
 verify_jwt = true
 
+[functions.elevenlabs-webhook]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

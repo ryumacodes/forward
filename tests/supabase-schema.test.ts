@@ -12,7 +12,7 @@ test('Supabase schema isolates owners and protects backend-only evidence', async
    grant usage on schema auth,public to anon,authenticated,service_role;
    grant execute on function auth.uid() to authenticated;
    insert into auth.users values ('${ownerA}'),('${ownerB}');`)
-  for (const migration of ['20260912054141_procurement_workspace.sql','20260912070155_procurement_policy_and_discovery.sql','20260912190000_live_abr_authorisation.sql','20260912203000_supplier_evidence.sql','20260912220000_trusted_outbound_calls.sql']) await db.exec(await readFile(new URL(`../supabase/migrations/${migration}`,import.meta.url),'utf8'))
+  for (const migration of ['20260912054141_procurement_workspace.sql','20260912070155_procurement_policy_and_discovery.sql','20260912190000_live_abr_authorisation.sql','20260912203000_supplier_evidence.sql','20260912220000_trusted_outbound_calls.sql','20260912233000_live_transcript_quotes.sql']) await db.exec(await readFile(new URL(`../supabase/migrations/${migration}`,import.meta.url),'utf8'))
   await db.exec(`set role authenticated; set request.jwt.claim.sub='${ownerA}';`)
   await db.query('insert into public.recovery_requests(owner_id,details) values ($1,$2)',[ownerA,{item:'Chicken',quantity:30,budget:350}])
   await db.query('insert into public.supplier_imports(owner_id,name,abn,phone) values ($1,$2,$3,$4)',[ownerA,'Example','51824753556','03 9000 0000'])

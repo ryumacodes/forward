@@ -36,6 +36,8 @@ export function RecoveriesPage({ recoveries, offers, selectedId, onSelect, onCre
     return matchesFilter && matchesQuery
   }), [recoveries, filter, query])
   const selected = recoveries.find(recovery => recovery.id === selectedId) ?? filtered[0] ?? recoveries[0]
+  const selectedOffers=offers.filter(offer=>offer.requestId?offer.requestId===selected?.id:selected?.id==='REC-024')
+  const recommended=selectedOffers[0]
   const open = recoveries.filter(recovery => recovery.status !== 'Approved').length
   const awaiting = recoveries.filter(recovery => recovery.status === 'Needs approval').length
   const protectedBudget = recoveries.filter(recovery => recovery.status !== 'Approved').reduce((total, recovery) => total + recovery.budget, 0)
@@ -106,15 +108,15 @@ export function RecoveriesPage({ recoveries, offers, selectedId, onSelect, onCre
 
         <div className="delivery-fact"><MapPin size={16}/><span><small>Deliver to</small><strong>{selected.location}</strong></span></div>
 
-        {selected.id === 'REC-024' && <section className="recovery-recommendation">
-          <div className="recommendation-top"><span><CheckCircle2 size={15}/> Best qualifying quote</span><small>Demo recommendation</small></div>
-          <div className="recommendation-supplier"><span className="supplier-logo">VF</span><div><strong>Victorian Foods</strong><small>Exact product · full quantity · on time</small></div><b>$315<small>delivered</small></b></div>
-          <div className="recommendation-saving"><ShieldCheck size={15}/><span><strong>$35 under budget</strong><small>Net 14 · no deposit · no added fees</small></span></div>
-          <button className="primary full" onClick={() => setShowQuotes(value => !value)}>{showQuotes ? 'Hide quote comparison' : 'Review all 3 quotes'} <ArrowRight size={15}/></button>
+        {recommended && <section className="recovery-recommendation">
+          <div className="recommendation-top"><span><CheckCircle2 size={15}/> Best available quote</span><small>{recommended.live?'Live transcript evidence':'Demo recommendation'}</small></div>
+          <div className="recommendation-supplier"><span className="supplier-logo">{recommended.initials}</span><div><strong>{recommended.name}</strong><small>{recommended.exact?'Exact product':'Substitution'} · {recommended.quantity} {selected.unit} · {recommended.onTime?'on time':'timing review'}</small></div><b>{money(recommended.price+recommended.fees)}<small>delivered total</small></b></div>
+          <div className="recommendation-saving"><ShieldCheck size={15}/><span><strong>{recommended.price+recommended.fees<=selected.budget?`${money(selected.budget-recommended.price-recommended.fees)} under budget`:'Over budget'}</strong><small>{recommended.paymentDays?`Net ${recommended.paymentDays}`:'Due on delivery'} · {recommended.depositPercent}% deposit · {money(recommended.fees)} fees</small></span></div>
+          <button className="primary full" onClick={() => setShowQuotes(value => !value)}>{showQuotes ? 'Hide quote comparison' : `Review all ${selectedOffers.length} quotes`} <ArrowRight size={15}/></button>
         </section>}
 
-        {showQuotes && selected.id === 'REC-024' && <div className="compact-quotes">
-          {offers.map(offer => {
+        {showQuotes && recommended && <div className="compact-quotes">
+          {selectedOffers.map(offer => {
             const checks = validateOffer(offer, selected)
             const failures = Object.entries(checks).filter(([, passes]) => !passes).map(([label]) => label)
             return <button key={offer.id} onClick={() => onTranscript(offer)}><span className={failures.length ? 'quote-excluded' : 'quote-best'}>{failures.length ? '—' : 'Best'}</span><span><strong>{offer.name}</strong><small>{failures.length ? failures.join(' · ') : `${offer.quantity}kg · ${offer.delivery}`}</small></span><b>{money(offer.price + offer.fees)}</b></button>

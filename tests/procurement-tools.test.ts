@@ -9,6 +9,7 @@ import { previewNormalize } from '../src/features/intake/schema'
 import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
 import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
+import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature } from '../src/features/voice/webhook'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -128,4 +129,17 @@ test('semantic similarity is deterministic and fails closed on dimension mismatc
  expect(cosineSimilarity([1,0],[1,0])).toBe(1)
  expect(cosineSimilarity([1,0],[0,1])).toBe(0)
  expect(cosineSimilarity([1],[1,0])).toBe(0)
+})
+test('ElevenLabs webhooks require a fresh valid HMAC and preserve speaker evidence',async()=>{
+ const body=JSON.stringify({type:'post_call_transcription'}),secret='webhook-secret',timestamp=1_799_712_000
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign'])
+ const digest=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(`${timestamp}.${body}`))
+ const signature=[...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('')
+ expect(await verifyElevenLabsSignature(body,`t=${timestamp},v0=${signature}`,secret,timestamp)).toBe(true)
+ expect(await verifyElevenLabsSignature(`${body} `,`t=${timestamp},v0=${signature}`,secret,timestamp)).toBe(false)
+ expect(await verifyElevenLabsSignature(body,`t=${timestamp},v0=${signature}`,secret,timestamp+1801)).toBe(false)
+ const turns=[{role:'agent' as const,message:'Can you quote?'},{role:'user' as const,message:'The total is $315. Please do not call us again.'}]
+ expect(transcriptText(turns)).toContain('SUPPLIER: The total is $315')
+ expect(supplierTranscript(turns)).not.toContain('Can you quote')
+ expect(supplierRequestedNoContact(supplierTranscript(turns))).toBe(true)
 })

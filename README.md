@@ -24,6 +24,7 @@ The language model extracts details and prepares natural conversation. Determini
 - Live public-web supplier discovery with attributable evidence and semantic product matching
 - Live ABR verification and a separate owner-authorisation gate
 - Single-supplier ElevenLabs SIP outbound calls with pre-dispatch trust checks and per-call policy snapshots
+- HMAC-verified post-call transcript ingestion and supplier-only structured quote extraction
 - Quote comparison and supplier ranking
 - Price and payment-term negotiation guardrails
 - Sentiment, patience, and negotiation-readiness signals
@@ -67,11 +68,12 @@ Link the Supabase CLI to your project, then apply the migrations and deploy the 
 
 ```bash
 supabase db push
-supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna OPENAI_DISCOVERY_MODEL=gpt-5.6-terra OPENAI_EMBEDDING_MODEL=text-embedding-3-small ABR_AUTH_GUID=your_abr_guid ELEVENLABS_API_KEY=your_key ELEVENLABS_AGENT_ID=your_agent_id ELEVENLABS_PHONE_NUMBER_ID=your_sip_phone_id ELEVENLABS_CALLBACK_NUMBER=+61390000000 CALLING_BUSINESS_NAME="Your Business"
+supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna OPENAI_DISCOVERY_MODEL=gpt-5.6-terra OPENAI_EMBEDDING_MODEL=text-embedding-3-small ABR_AUTH_GUID=your_abr_guid ELEVENLABS_API_KEY=your_key ELEVENLABS_AGENT_ID=your_agent_id ELEVENLABS_PHONE_NUMBER_ID=your_sip_phone_id ELEVENLABS_CALLBACK_NUMBER=+61390000000 ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret CALLING_BUSINESS_NAME="Your Business"
 supabase functions deploy normalize-intake
 supabase functions deploy verify-abn
 supabase functions deploy discover-suppliers
 supabase functions deploy start-supplier-call
+supabase functions deploy elevenlabs-webhook --no-verify-jwt
 ```
 
 Database migrations live in `supabase/migrations`. Register for the free ABN Lookup web service to obtain the server-side `ABR_AUTH_GUID`; a checksum alone is never shown as official registry verification. Discovery searches public supplier pages, rejects private/local URLs before retrieval, stores a bounded text excerpt plus its source and embedding, and presents results as leads—not authorised suppliers. Until Supabase credentials are configured, the app uses its clearly labelled prototype data.
@@ -97,4 +99,4 @@ data/                  Researched supplier lead exports
 
 ## Prototype status
 
-The repository currently implements connected intake, ABR verification, evidence-backed web discovery, and trust-gated ElevenLabs outbound-call server paths, but they still require deployment credentials. Live transcript ingestion, SMS and email delivery, and purchasing remain to be connected. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before Backfill can contact them.
+The repository currently implements connected intake, ABR verification, evidence-backed web discovery, trust-gated ElevenLabs outbound calls, and HMAC-verified transcript/quote ingestion, but they still require deployment credentials. SMS and email delivery, purchasing, and production hosting remain to be connected. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before Backfill can contact them.

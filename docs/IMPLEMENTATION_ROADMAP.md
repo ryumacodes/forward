@@ -21,9 +21,10 @@ Backfill is positioned as an emergency and everyday procurement agent for owner-
   - Use a stable Australian caller ID, clear AI disclosure, source disclosure, business-hours limits, opt-outs, and a two-minute first-call target.
   - Offer written verification and escalate frustration, uncertainty, or unusual terms.
   - The server dispatch path now re-checks live ABR evidence, owner authorisation, opt-out, business hours, a rolling two-attempt limit, identity, and callback configuration before initiating one ElevenLabs SIP call. It records the decision and immutable policy snapshot; deployment requires Australian caller ID and provider secrets.
-- [ ] Live transcript and quote ingestion
+- [x] Live transcript and quote ingestion
   - Persist provider events and normalize real transcripts into comparable supplier quotes.
   - Remove static quotes from the connected workspace.
+  - HMAC-verified, idempotent post-call ingestion now stores provider transcripts, applies supplier opt-outs, extracts only supplier-stated quote facts with evidence, reconciles totals in code, flags incomplete terms, and feeds connected-workspace rankings.
 - [ ] Email, SMS, approvals, and purchasing
   - Send written briefs and approval requests through audited channels.
   - Never place a purchase outside explicit owner authority.
