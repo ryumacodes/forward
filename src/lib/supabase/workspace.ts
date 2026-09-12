@@ -5,13 +5,18 @@ export async function loadWorkspace() {
   if(!supabase) throw new Error('Supabase is not configured.')
   const [requests,suppliers] = await Promise.all([
     supabase.from('recovery_requests').select('id,details,status').order('created_at',{ascending:false}),
-    supabase.from('supplier_imports').select('id,name,abn,phone,created_at').order('created_at',{ascending:false}),
+    supabase.from('supplier_imports').select('id,name,abn,phone,created_at,authorised,supplier_verifications(active,legal_name,gst_registered,name_matched,contact_confirmed,checked_at)').order('created_at',{ascending:false}),
   ])
   if(requests.error) throw requests.error
   if(suppliers.error) throw suppliers.error
   return {
     recoveries: requests.data.map(row=>({...row.details,id:row.id,status:row.status}) as Recovery),
-    suppliers: suppliers.data.map(row=>({id:row.id,name:row.name,abn:row.abn,phone:row.phone,importedAt:row.created_at,status:'Awaiting registry check',authorised:false}) as ImportedSupplier),
+    suppliers: suppliers.data.map(row=>{
+      const joined=Array.isArray(row.supplier_verifications)?row.supplier_verifications[0]:row.supplier_verifications
+      const verification=joined?{active:joined.active,legalName:joined.legal_name,gstRegistered:Boolean(joined.gst_registered),businessNames:[],state:null,postcode:null,entityType:null,statusEffectiveFrom:null,nameMatched:joined.name_matched,contactConfirmed:joined.contact_confirmed,checkedAt:joined.checked_at,source:'ABR' as const,evidenceUrl:`https://abr.business.gov.au/ABN/View?abn=${row.abn}`} : undefined
+      const status:ImportedSupplier['status']=row.authorised?'Authorised':verification?(verification.active&&verification.nameMatched?'Verified — owner review':'Registry review required'):'Awaiting registry check'
+      return {id:row.id,name:row.name,abn:row.abn,phone:row.phone,importedAt:row.created_at,status,authorised:row.authorised,verification} as ImportedSupplier
+    }),
   }
 }
 export async function saveRecovery(request:Recovery,ownerId:string) {

@@ -64,11 +64,12 @@ Link the Supabase CLI to your project, then apply the migrations and deploy the 
 
 ```bash
 supabase db push
-supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna
+supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna ABR_AUTH_GUID=your_abr_guid
 supabase functions deploy normalize-intake
+supabase functions deploy verify-abn
 ```
 
-Database migrations live in `supabase/migrations`. Until Supabase credentials are configured, the app uses its local prototype data.
+Database migrations live in `supabase/migrations`. Register for the free ABN Lookup web service to obtain the server-side `ABR_AUTH_GUID`; a checksum alone is never shown as official registry verification. Until Supabase credentials are configured, the app uses its local prototype data.
 
 ## Commands
 

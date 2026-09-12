@@ -7,6 +7,7 @@ import { checkContactPolicy } from '../src/features/voice/trustPolicy'
 import { demoCandidates, discoveryProfiles, rankCandidates } from '../src/features/discovery/engine'
 import { previewNormalize } from '../src/features/intake/schema'
 import { supplierLeads } from '../src/data/supplierLeads'
+import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -86,4 +87,17 @@ test('scraped supplier leads have valid active-ABN evidence and remain unauthori
   expect(checkAbn(lead.abn)).toBe(true)
   expect(lead.abnEvidenceUrl).toStartWith('https://abr.business.gov.au/')
  }
+})
+test('ABR JSONP becomes conservative, attributable verification evidence',()=>{
+ const record=parseAbrJsonp('backfill({"Abn":"51824753556","AbnStatus":"Active","EntityName":"Example Foods Pty Ltd","BusinessName":["Example Foods"],"Gst":"2000-07-01","AddressState":"VIC","AddressPostcode":"3000","Message":""})')
+ const result=toAbrVerification(record,'Example Foods','2026-09-12T09:00:00.000Z')
+ expect(result.active).toBe(true)
+ expect(result.nameMatched).toBe(true)
+ expect(result.gstRegistered).toBe(true)
+ expect(result.source).toBe('ABR')
+ expect(result.evidenceUrl).toContain('51824753556')
+})
+test('ABR name matching fails closed for unrelated businesses',()=>{
+ expect(businessNameMatches('Harbour Produce','Completely Different Holdings Pty Ltd',['Different Trading Name'])).toBe(false)
+ expect(()=>toAbrVerification({Message:'Authentication GUID is not recognised'},'Example')).toThrow('GUID')
 })

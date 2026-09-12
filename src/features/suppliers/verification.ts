@@ -1,6 +1,7 @@
 export type ImportedSupplier = {
   id: string; name: string; abn: string; phone: string; importedAt: string;
-  status: 'Awaiting registry check'; authorised: false;
+  status: 'Awaiting registry check'|'Verified — owner review'|'Registry review required'|'Authorised'; authorised: boolean;
+  verification?: RegistryEvidence & {gstRegistered:boolean;businessNames:string[];state:string|null;postcode:string|null;entityType:string|null;statusEffectiveFrom:string|null;evidenceUrl:string}
 }
 export function checkAbn(value: string) {
   if (!/^[\d\s]+$/.test(value)) return false

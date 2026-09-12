@@ -9,9 +9,10 @@ Backfill is positioned as an emergency and everyday procurement agent for owner-
   - The owner reviews extracted values, missing fields, confidence, and source evidence before creating a recovery.
   - A local deterministic fallback keeps the demo usable without credentials.
   - The live path is implemented and requires the Supabase function and OpenAI secret to be deployed in the target environment.
-- [ ] Live ABR verification
+- [x] Live ABR verification
   - Check active status, legal name, GST registration, location, and verification freshness.
   - Never treat an ABN checksum as registry verification.
+  - The authenticated server path and owner-authorisation gate are implemented; deployment requires a registered `ABR_AUTH_GUID`.
 - [ ] Supplier discovery and evidence retrieval
   - Retrieve local candidates, attach source evidence, and use semantic product matching.
   - Apply hard eligibility gates before weighted ranking.
