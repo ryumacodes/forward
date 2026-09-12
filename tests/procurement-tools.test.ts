@@ -3,7 +3,7 @@ import { checkAbn, eligibleForAuthorisation, prepareSupplier } from '../src/feat
 import { calculateQuote, formatCents } from '../src/features/negotiation/calculator'
 import { assessConversation } from '../src/features/negotiation/signals'
 import { defaultNegotiationPolicy, evaluateNegotiation } from '../src/features/negotiation/policy'
-import { checkContactPolicy } from '../src/features/voice/trustPolicy'
+import { checkContactPolicy, normalizeAustralianPhone, outboundTrustPrompt, trustedProductIntroduction } from '../src/features/voice/trustPolicy'
 import { demoCandidates, discoveryProfiles, rankCandidates } from '../src/features/discovery/engine'
 import { previewNormalize } from '../src/features/intake/schema'
 import { supplierLeads } from '../src/data/supplierLeads'
@@ -65,6 +65,20 @@ test('contact policy blocks unverified, repeated and out-of-hours calls',()=>{
  const result=checkContactPolicy({abnVerified:false,authorised:true,optedOut:false,localHour:18,attemptsToday:2,businessName:'Cafe',callbackNumber:'03 9000 0000'})
  expect(result.allowed).toBe(false)
  expect(result.blockers).toHaveLength(3)
+})
+test('outbound call context uses Australian caller identity and supplier-trust language',()=>{
+ expect(normalizeAustralianPhone('03 9000 0000')).toBe('+61390000000')
+ expect(normalizeAustralianPhone('+61 412 345 678')).toBe('+61412345678')
+ expect(()=>normalizeAustralianPhone('+1 555 123 4567')).toThrow('Australian')
+ const opening=trustedProductIntroduction({businessName:'Flinders Kitchen',callbackNumber:'03 9000 0000',product:'chicken breast',quantity:30,unit:'kg',contactSource:'the owner supplier record'})
+ expect(opening).toContain('AI procurement assistant')
+ expect(opening).toContain('chicken breast')
+ expect(opening).toContain('convenient time')
+ expect(opening).toContain('email the request first')
+ const prompt=outboundTrustPrompt({businessName:'Flinders Kitchen',callbackNumber:'03 9000 0000',product:'chicken',quantity:30,unit:'kg',deliveryLocation:'Melbourne',deadline:'tomorrow',maximumTotalCents:35000,minimumPaymentDays:14,maximumDepositBps:0,maximumCounteroffers:2,allowSubstitutions:false})
+ expect(prompt).toContain('under two minutes')
+ expect(prompt).toContain('no order has been placed')
+ expect(prompt).toContain('cannot buy, accept, commit')
 })
 test('all intake channels normalize to the same fields with evidence',()=>{
  const result=previewNormalize('email','Need 30 kg of chicken breast, budget up to $350. Please quote net 14 days.')

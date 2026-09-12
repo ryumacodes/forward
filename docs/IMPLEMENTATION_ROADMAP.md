@@ -17,9 +17,10 @@ Backfill is positioned as an emergency and everyday procurement agent for owner-
   - Retrieve local candidates, attach source evidence, and use semantic product matching.
   - Apply hard eligibility gates before weighted ranking.
   - The authenticated server path now performs web search, SSRF-guarded page extraction, 1,536-dimension embeddings, evidence persistence, and semantic lead ranking; deployment requires the migration, function, and OpenAI secret.
-- [ ] Trust-governed outbound calls
+- [x] Trust-governed outbound calls
   - Use a stable Australian caller ID, clear AI disclosure, source disclosure, business-hours limits, opt-outs, and a two-minute first-call target.
   - Offer written verification and escalate frustration, uncertainty, or unusual terms.
+  - The server dispatch path now re-checks live ABR evidence, owner authorisation, opt-out, business hours, a rolling two-attempt limit, identity, and callback configuration before initiating one ElevenLabs SIP call. It records the decision and immutable policy snapshot; deployment requires Australian caller ID and provider secrets.
 - [ ] Live transcript and quote ingestion
   - Persist provider events and normalize real transcripts into comparable supplier quotes.
   - Remove static quotes from the connected workspace.

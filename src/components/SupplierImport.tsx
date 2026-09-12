@@ -1,15 +1,18 @@
 import { useState } from 'react'
-import { AlertTriangle, Check, Clock3, ExternalLink, Plus, ShieldCheck, X } from 'lucide-react'
+import { AlertTriangle, Check, Clock3, ExternalLink, Phone, Plus, ShieldCheck, X } from 'lucide-react'
 import { prepareSupplier, type ImportedSupplier } from '../features/suppliers/verification'
 import { authoriseVerifiedSupplier, verifySupplierAbn } from '../features/suppliers/registry'
+import { startSupplierCall } from '../features/voice/outbound'
 
 type SupplierImportProps = {
   suppliers: ImportedSupplier[]
   onImport: (supplier: ImportedSupplier) => void | Promise<void>
   onUpdate: (supplier: ImportedSupplier) => void
+  activeRequestId?: string
+  onCallStarted?: (message:string) => void
 }
 
-export function SupplierImport({suppliers,onImport,onUpdate}:SupplierImportProps) {
+export function SupplierImport({suppliers,onImport,onUpdate,activeRequestId,onCallStarted}:SupplierImportProps) {
   const [open,setOpen] = useState(false)
   const [saving,setSaving] = useState(false)
   const [workingId,setWorkingId] = useState('')
@@ -33,6 +36,13 @@ export function SupplierImport({suppliers,onImport,onUpdate}:SupplierImportProps
     finally {setWorkingId('')}
   }
 
+  async function call(supplier:ImportedSupplier) {
+    setWorkingId(supplier.id);setError('')
+    try {const result=await startSupplierCall(supplier.id,activeRequestId||'');onCallStarted?.(`Live call initiated. Conversation ${result.conversationId}.`)}
+    catch(err){setError(err instanceof Error?err.message:'Unable to start this call.')}
+    finally{setWorkingId('')}
+  }
+
   return <section className="supplier-import">
     <div className="section-header"><div><h2>Supplier verification queue</h2><p>Import → live ABR evidence → owner confirmation → authorised outreach.</p></div><button className="primary" onClick={() => setOpen(true)}><Plus size={17}/> Import supplier</button></div>
     {error && <p className="form-error registry-error" role="alert">{error}</p>}
@@ -48,6 +58,7 @@ export function SupplierImport({suppliers,onImport,onUpdate}:SupplierImportProps
           <a className="secondary" href={`https://abr.business.gov.au/ABN/View?abn=${supplier.abn}`} target="_blank" rel="noreferrer">View public ABR record <ExternalLink size={14}/></a>
           {!supplier.authorised && <button className="secondary" disabled={workingId===supplier.id} onClick={()=>verify(supplier)}>{workingId===supplier.id?'Checking ABR…':verification?'Refresh ABR evidence':'Verify with ABR'}</button>}
           {!supplier.authorised&&ready&&<button className="primary" disabled={workingId===supplier.id} onClick={()=>authorise(supplier)}>{workingId===supplier.id?'Authorising…':'Confirm contact & authorise'}</button>}
+          {supplier.authorised&&<button className="primary" disabled={workingId===supplier.id||!activeRequestId} onClick={()=>call(supplier)}><Phone size={14}/>{workingId===supplier.id?'Starting call…':activeRequestId?'Start live quote call':'Select a recovery first'}</button>}
         </div>
         <p className="registry-caveat"><ShieldCheck size={14}/>{supplier.authorised?'Owner-authorised for outreach. Contact policy and opt-out checks still run before every call.':'A checksum or public-page link never authorises outreach. Live evidence and owner confirmation are both required.'}</p>
       </article>

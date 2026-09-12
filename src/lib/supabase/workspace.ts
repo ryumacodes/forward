@@ -19,12 +19,13 @@ export async function loadWorkspace() {
     }),
   }
 }
-export async function saveRecovery(request:Recovery,ownerId:string) {
+export async function saveRecovery(request:Recovery,_ownerId:string) {
   if(!supabase) return request
   const {id:_id,status:_status,...details}=request
-  const {data,error}=await supabase.from('recovery_requests').insert({owner_id:ownerId,details}).select('id,status').single()
+  const {data,error}=await supabase.rpc('create_recovery_with_policy',{p_details:details}).single()
   if(error)throw error
-  return {...request,id:data.id,status:data.status} as Recovery
+  const row=data as {id:string;status:Recovery['status']}
+  return {...request,id:row.id,status:row.status} as Recovery
 }
 export async function saveSupplier(supplier:ImportedSupplier,ownerId:string) {
   if(!supabase)return
