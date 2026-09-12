@@ -12,7 +12,7 @@ Deno.serve(async request => {
     const model = Deno.env.get('OPENAI_EXTRACTION_MODEL') || 'gpt-5.6-luna'
     const response = await fetch('https://api.openai.com/v1/responses',{
       method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json'},
-      body:JSON.stringify({model,input:[{role:'system',content:[{type:'input_text',text:'Extract procurement facts only from the supplied text. Do not infer unstated prices, dates, consent or commitments. Cite short evidence spans. Mark uncertain or missing fields.'}]},{role:'user',content:[{type:'input_text',text:`Source: ${source}\n\n${text}`}]}],text:{format:{type:'json_schema',name:'normalized_procurement_intake',strict:true,schema:intakeJsonSchema}}}),
+      body:JSON.stringify({model,store:false,input:[{role:'system',content:[{type:'input_text',text:`Extract procurement facts only from the supplied text. Do not infer unstated prices, consent, commitments, delivery addresses, or product requirements. Resolve relative dates using current time ${new Date().toISOString()} and Australia/Melbourne unless the source states another timezone. Return local deadlines as YYYY-MM-DDTHH:mm. Cite short verbatim evidence spans and mark uncertain or missing fields.`}]},{role:'user',content:[{type:'input_text',text:`Source: ${source}\n\n${text}`}]}],text:{format:{type:'json_schema',name:'normalized_procurement_intake',strict:true,schema:intakeJsonSchema}}}),
     })
     if (!response.ok) return json({error:'Extraction provider failed',status:response.status},502)
     const body = await response.json()

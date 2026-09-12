@@ -5,4 +5,5 @@ import { AuthGate } from './lib/supabase/AuthGate'
 import './styles.css'
 import './mobile.css'
 import './recoveries.css'
+import './intake.css'
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><AuthGate><App/></AuthGate></React.StrictMode>)

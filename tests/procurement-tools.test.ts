@@ -72,6 +72,14 @@ test('all intake channels normalize to the same fields with evidence',()=>{
  expect(result.paymentDays).toBe(14)
  expect(result.evidence.length).toBeGreaterThan(2)
 })
+test('intake preview resolves relative deadlines and delivery evidence',()=>{
+ const result=previewNormalize('voice_note','Need 30 kilos of chicken breast tomorrow before 8 am, max $350, delivered to 24 Flinders Lane, Melbourne.',new Date('2026-09-12T10:00:00+10:00'))
+ expect(result.item).toBe('chicken breast')
+ expect(result.unit).toBe('kg')
+ expect(result.deadline).toBe('2026-09-13T08:00')
+ expect(result.deliveryLocation).toBe('24 Flinders Lane, Melbourne')
+ expect(result.missingFields).toEqual([])
+})
 test('scraped supplier leads have valid active-ABN evidence and remain unauthorised',()=>{
  expect(supplierLeads.length).toBeGreaterThanOrEqual(8)
  for (const lead of supplierLeads) {
