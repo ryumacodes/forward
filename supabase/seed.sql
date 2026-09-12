@@ -1,0 +1,1 @@
+-- Intentionally empty: demo supplier records are never seeded into a live workspace.

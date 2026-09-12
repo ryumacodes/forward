@@ -10,15 +10,18 @@
   },
   "dependencies": {
     "@elevenlabs/client": "^1.25.0",
+    "@supabase/supabase-js": "2.116.0",
     "lucide-react": "^0.468.0",
     "orb-ui": "^0.8.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^4.7.0",
+    "supabase": "2.117.0",
     "typescript": "~5.9.2",
     "vite": "^6.3.5"
   }

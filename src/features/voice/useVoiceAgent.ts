@@ -1,3 +1,4 @@
+import { negotiationClientTools } from '../negotiation/agentTools'
 import { useEffect, useRef, useState } from 'react'
 import type { OrbSignal } from 'orb-ui'
 import type { ElevenLabsOrbAdapter } from 'orb-ui/adapters'
@@ -18,7 +19,7 @@ export function useVoiceAgent(onTranscript: (text: string) => void) {
     if (agentId) {
       void Promise.all([import('@elevenlabs/client'), import('orb-ui/adapters')]).then(([{Conversation}, {createElevenLabsAdapter}]) => {
         if (cancelled) return
-        const adapter = createElevenLabsAdapter(Conversation, {agentId, onMessage: (event: {source: string; message: string}) => {
+        const adapter = createElevenLabsAdapter(Conversation, {agentId, clientTools: negotiationClientTools, onMessage: (event: {source: string; message: string}) => {
           if (alive.current && event.source === 'user') callback.current(event.message)
         }})
         adapterRef.current = adapter

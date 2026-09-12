@@ -24,7 +24,7 @@ React 19 + TypeScript + Vite, with Lucide icons and custom responsive styling. T
 - Explicit human approval state
 - Responsive desktop/mobile layout
 
-All supplier records, transcripts, and metrics are illustrative. New requests and approvals live only in React state and reset on refresh. No real phone calls, SMS, email, orders, recordings, or authentication are connected. The offer deadline flag is sample data, not a production timestamp validator. Additional requests deliberately show an empty quote state instead of fabricated offers.
+With blank Supabase settings, records and metrics are illustrative and demo state resets on refresh. With Supabase configured, owner sign-in gates the workspace and requests/supplier imports persist to Postgres. Supplier outbound calls, SMS, email, purchasing and recordings remain unconnected. The offer deadline flag is sample data, not a production timestamp validator. Additional requests deliberately show an empty quote state instead of fabricated offers.
 
 ## Next integration
 
@@ -48,3 +48,28 @@ Private agents require a server endpoint for signed URLs or conversation tokens.
 ## Supplier assessment and payment terms
 
 Quote rankings show requirement failures, price headroom, demo on-time history, and payment terms. Requests capture minimum days from invoice and maximum deposit. Counteroffers show original versus offered terms and fees; out-of-policy terms require confirmation. The purchase eligibility function also requires explicit pre-authorisation, supplier authorisation, and ABN verification. All fixture ABNs are unverified, preventing live eligibility. Ranking does not authorise a purchase. Run `bun test` for the ranking and authorisation checks.
+
+## Supplier imports and negotiation tools
+
+Supplier imports validate the official [ABR modulus-89 checksum](https://abr.business.gov.au/Help/AbnFormat), phone format, and duplicate ABNs. A passing checksum is not registry evidence. Imported suppliers are review records (persisted when Supabase is configured); they cannot enter the calling list. Live verification needs an ABR web-service GUID and a server integration to retrieve active status, entity/business names, GST status and location. Name/contact checks and owner authorisation follow registry verification. The freshness gate defaults to 24 hours.
+
+The Call activity page includes a negotiation desk. Quote arithmetic uses integer cents and quantities to three decimal places, rounds half-up at each displayed stage, and includes explicit discount, delivery, fees, additional tax, deposit and budget. Tax is a user-supplied assumption rather than an inferred GST treatment. No order is placed.
+
+Conversation cues are transparent regex-based transcript checks, not acoustic sentiment analysis or personality inference. They advise shorter responses under explicit time pressure, stop bargaining at final-offer boundaries or after two counteroffers, and prioritise contact opt-outs. Silence, accent and speaking speed are not treated as impatience. UI suggestions are not sent automatically.
+
+The optional ElevenLabs session registers `calculate_quote` and `assess_supplier_reply` client handlers. Matching tools must be configured in the ElevenLabs agent before it can invoke them. `calculate_quote` accepts the eight string fields in `QuoteInput` and returns cent amounts as decimal strings, avoiding JSON precision loss. `assess_supplier_reply` accepts `text` and optional nonnegative integer `counteroffers`. These handlers have not been tested against a live agent. Server-side policy enforcement and a durable do-not-contact list are still needed before autonomous supplier calls.
+
+## Supabase setup
+
+Project credentials are deliberately blank in `.env.example`.
+
+1. Copy `.env.example` to `.env.local`. Fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from your project (use a `sb_publishable_` key).
+2. Apply `supabase/migrations/20260912054141_procurement_workspace.sql` to a fresh project using its SQL Editor, or the Supabase CLI migration workflow. It has not been applied remotely.
+3. Create an owner email/password account in Supabase Authentication. The UI provides sign-in, not open registration. Disable public sign-ups in the hosted project if it should be invite-only.
+4. Restart Vite and sign in. Create a request or import a supplier, refresh, and confirm it persists. Verify a second account cannot see the first owner's records.
+
+Blank settings preserve demo mode; incomplete settings show a configuration error. A database/network failure never silently falls back to sample data. One owner is one workspace in this initial schema; shared business/team membership is future work. Browser users can insert requests/imports and read their own rows. They cannot forge ABR results, supplier quotes, or call records. Only a request already marked Needs approval by a backend job can transition to Approved; this records a decision and does not place an order. Client-supplied request details still require deterministic backend validation before any external action.
+
+Protected schema tables for quotes/calls/registry evidence are ready for future backend jobs; the live quote and transcript UI is not yet connected to those tables. Imports therefore stay pending until the verification integration is implemented. Do-not-contact flags on calls are storage only until a backend orchestrator enforces them.
+
+`bun test` runs the migration in embedded Postgres with an emulated `auth.uid()` and checks owner isolation, protected columns, anonymous denial, and backend-only verification writes. This validates SQL/RLS but not hosted Supabase Auth, PostgREST, or Edge Functions. Docker is not running, so the local Supabase stack and advisors were not run. Run hosted security advisors and the two-account smoke test after applying the migration.
