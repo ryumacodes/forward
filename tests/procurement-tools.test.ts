@@ -6,6 +6,7 @@ import { defaultNegotiationPolicy, evaluateNegotiation } from '../src/features/n
 import { checkContactPolicy } from '../src/features/voice/trustPolicy'
 import { demoCandidates, discoveryProfiles, rankCandidates } from '../src/features/discovery/engine'
 import { previewNormalize } from '../src/features/intake/schema'
+import { supplierLeads } from '../src/data/supplierLeads'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -70,4 +71,12 @@ test('all intake channels normalize to the same fields with evidence',()=>{
  expect(result.budgetCents).toBe(35000)
  expect(result.paymentDays).toBe(14)
  expect(result.evidence.length).toBeGreaterThan(2)
+})
+test('scraped supplier leads have valid active-ABN evidence and remain unauthorised',()=>{
+ expect(supplierLeads.length).toBeGreaterThanOrEqual(8)
+ for (const lead of supplierLeads) {
+  expect(checkAbn(lead.abn)).toBe(true)
+  expect(lead.abnEvidenceUrl).toStartWith('https://abr.business.gov.au/')
+  expect(lead.authorisationStatus).toBe('Owner review required')
+ }
 })

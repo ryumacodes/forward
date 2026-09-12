@@ -26,6 +26,7 @@ React 19 + TypeScript + Vite, with Lucide icons and custom responsive styling. T
 - Business-specific supplier discovery profiles with hard eligibility gates
 - Negotiation, contact-time, retry and anonymous market-quote rules
 - One structured extraction schema for calls, voice notes, email, SMS and forms
+- Eight researched Melbourne supplier leads with current ABN evidence and source links
 
 With blank Supabase settings, records and metrics are illustrative and demo state resets on refresh. With Supabase configured, owner sign-in gates the workspace and requests/supplier imports persist to Postgres. Supplier outbound calls, SMS, email, purchasing and recordings remain unconnected. The offer deadline flag is sample data, not a production timestamp validator. Additional requests deliberately show an empty quote state instead of fabricated offers.
 
@@ -36,6 +37,8 @@ The intended flow is: speak item/deadline/budget → retrieve semantically relev
 Embeddings are intended only for product/category recall when supplier catalogues use different wording. A small extraction model turns scraped pages and communications into typed facts with confidence and evidence. Deterministic code owns eligibility, weighted ranking, exact money arithmetic, maximum spend, deposits, payment-term bounds, contact rules, purchase authority and escalation. Low-confidence facts require review and model output never grants permission.
 
 The starter discovery profiles are hospitality/perishables, construction/urgent materials, and general wholesale. Each uses explicit weights for product match, delivery fit, landed cost, reliability, locality, payment terms and certifications. Product mismatch, inactive or stale ABN evidence, missing authorisation, missing required certification, and supplier opt-out remain hard blockers regardless of score.
+
+The Suppliers page includes a researched starter list focused on Melbourne hospitality food, poultry and produce. The same records are available in `data/melbourne-supplier-leads.csv`. ABN status was checked against ABN Lookup on 12 September 2026. Product, delivery, certification and contact details come from each supplier's public website and remain claims to confirm directly. Every lead starts with owner authorisation required, so scraping cannot trigger outreach.
 
 ## Structure
 
