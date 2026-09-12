@@ -21,6 +21,8 @@ The language model extracts details and prepares natural conversation. Determini
 - Typed fallback for browsers without voice access
 - Supplier importing with ABN validation states
 - Melbourne supplier lead dataset for discovery testing
+- Live public-web supplier discovery with attributable evidence and semantic product matching
+- Live ABR verification and a separate owner-authorisation gate
 - Quote comparison and supplier ranking
 - Price and payment-term negotiation guardrails
 - Sentiment, patience, and negotiation-readiness signals
@@ -64,12 +66,13 @@ Link the Supabase CLI to your project, then apply the migrations and deploy the 
 
 ```bash
 supabase db push
-supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna ABR_AUTH_GUID=your_abr_guid
+supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna OPENAI_DISCOVERY_MODEL=gpt-5.6-terra OPENAI_EMBEDDING_MODEL=text-embedding-3-small ABR_AUTH_GUID=your_abr_guid
 supabase functions deploy normalize-intake
 supabase functions deploy verify-abn
+supabase functions deploy discover-suppliers
 ```
 
-Database migrations live in `supabase/migrations`. Register for the free ABN Lookup web service to obtain the server-side `ABR_AUTH_GUID`; a checksum alone is never shown as official registry verification. Until Supabase credentials are configured, the app uses its local prototype data.
+Database migrations live in `supabase/migrations`. Register for the free ABN Lookup web service to obtain the server-side `ABR_AUTH_GUID`; a checksum alone is never shown as official registry verification. Discovery searches public supplier pages, rejects private/local URLs before retrieval, stores a bounded text excerpt plus its source and embedding, and presents results as leads—not authorised suppliers. Until Supabase credentials are configured, the app uses its clearly labelled prototype data.
 
 ## Commands
 
@@ -85,11 +88,11 @@ bun test         # run the test suite
 src/components/       Dashboard and procurement workflow UI
 src/features/         Supplier, intake, voice, and negotiation logic
 src/lib/              Shared utilities and Supabase client
-supabase/functions/   Server-side intake processing
+supabase/functions/   Server-side intake, ABR, and evidence retrieval
 supabase/migrations/  Database schema and security policies
 data/                  Researched supplier lead exports
 ```
 
 ## Prototype status
 
-The repository currently demonstrates the complete product workflow and decision policy. Live outbound calls, SMS and email delivery, purchasing, call recording, and live Australian Business Register verification still require production service credentials and integrations. Imported or discovered suppliers must be reviewed and authorised by the business owner before Backfill can contact them.
+The repository currently implements connected intake, ABR verification, and evidence-backed web discovery server paths, but they still require deployment credentials. Live outbound calls, SMS and email delivery, purchasing, and call recording remain to be connected. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before Backfill can contact them.

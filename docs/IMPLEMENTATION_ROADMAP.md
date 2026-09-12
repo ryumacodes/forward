@@ -13,9 +13,10 @@ Backfill is positioned as an emergency and everyday procurement agent for owner-
   - Check active status, legal name, GST registration, location, and verification freshness.
   - Never treat an ABN checksum as registry verification.
   - The authenticated server path and owner-authorisation gate are implemented; deployment requires a registered `ABR_AUTH_GUID`.
-- [ ] Supplier discovery and evidence retrieval
+- [x] Supplier discovery and evidence retrieval
   - Retrieve local candidates, attach source evidence, and use semantic product matching.
   - Apply hard eligibility gates before weighted ranking.
+  - The authenticated server path now performs web search, SSRF-guarded page extraction, 1,536-dimension embeddings, evidence persistence, and semantic lead ranking; deployment requires the migration, function, and OpenAI secret.
 - [ ] Trust-governed outbound calls
   - Use a stable Australian caller ID, clear AI disclosure, source disclosure, business-hours limits, opt-outs, and a two-minute first-call target.
   - Offer written verification and escalate frustration, uncertainty, or unusual terms.

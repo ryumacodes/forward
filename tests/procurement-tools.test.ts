@@ -8,6 +8,7 @@ import { demoCandidates, discoveryProfiles, rankCandidates } from '../src/featur
 import { previewNormalize } from '../src/features/intake/schema'
 import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
+import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -100,4 +101,17 @@ test('ABR JSONP becomes conservative, attributable verification evidence',()=>{
 test('ABR name matching fails closed for unrelated businesses',()=>{
  expect(businessNameMatches('Harbour Produce','Completely Different Holdings Pty Ltd',['Different Trading Name'])).toBe(false)
  expect(()=>toAbrVerification({Message:'Authentication GUID is not recognised'},'Example')).toThrow('GUID')
+})
+test('supplier evidence extraction rejects SSRF targets and removes active markup',()=>{
+ expect(isPotentiallyPublicUrl('https://supplier.example/products')).toBe(true)
+ expect(isPotentiallyPublicUrl('http://supplier.example/products')).toBe(false)
+ expect(isPotentiallyPublicUrl('https://127.0.0.1/admin')).toBe(false)
+ expect(isPotentiallyPublicUrl('https://localhost/admin')).toBe(false)
+ expect(extractVisibleText('<style>secret</style><h1>Chicken &amp; produce</h1><script>alert(1)</script>')).toBe('Chicken & produce')
+ expect(uniquePublicSources([{url:'https://supplier.example/',title:'A'},{url:'https://supplier.example/',title:'B'}])).toHaveLength(1)
+})
+test('semantic similarity is deterministic and fails closed on dimension mismatch',()=>{
+ expect(cosineSimilarity([1,0],[1,0])).toBe(1)
+ expect(cosineSimilarity([1,0],[0,1])).toBe(0)
+ expect(cosineSimilarity([1],[1,0])).toBe(0)
 })
