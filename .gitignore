@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnp.*
+
+# Build and framework output
+dist/
+build/
+.output/
+.tanstack/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Secrets (keep a documented template)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local tools and OS files
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+logs/
+.tmp/
+tmp/
+.playwright/
+playwright-report/
+test-results/
