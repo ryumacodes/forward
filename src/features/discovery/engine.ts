@@ -64,7 +64,7 @@ export const discoveryProfiles: DiscoveryProfile[] = [
   },
 ]
 
-const FACTORS: DiscoveryFactor[] = ['productMatch','deliveryFit','landedCost','reliability','locality','paymentTerms','certifications']
+export const discoveryFactors: DiscoveryFactor[] = ['productMatch','deliveryFit','landedCost','reliability','locality','paymentTerms','certifications']
 
 export function evaluateCandidate(candidate: SupplierCandidate, profile: DiscoveryProfile, now = Date.now()): DiscoveryDecision {
   const blockers: string[] = []
@@ -77,7 +77,7 @@ export function evaluateCandidate(candidate: SupplierCandidate, profile: Discove
   const reviewReasons: string[] = []
   if (candidate.sourceConfidence < .75) reviewReasons.push('Extracted details need human review')
   if (candidate.evidenceUrls.length === 0) reviewReasons.push('No source evidence is attached')
-  const score = Math.round(FACTORS.reduce((sum, factor) => sum + candidate[factor] * profile.weights[factor], 0) / 100)
+  const score = Math.round(discoveryFactors.reduce((sum, factor) => sum + candidate[factor] * profile.weights[factor], 0) / 100)
   return {candidate, eligible: blockers.length === 0, score, blockers, reviewReasons}
 }
 

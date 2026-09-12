@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { OrbSignal } from 'orb-ui'
 import type { ElevenLabsOrbAdapter } from 'orb-ui/adapters'
 
-/** Public-agent development integration. Private session credentials must come from a server. */
 export function useVoiceAgent(onTranscript: (text: string) => void) {
   const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID?.trim()
   const [signal, setSignal] = useState<OrbSignal>({state:'idle'})

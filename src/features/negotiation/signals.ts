@@ -1,4 +1,3 @@
-/** Transparent text cues, not a diagnosis, personality score, or audio emotion model. */
 export function assessConversation(text: string, counters = 0) {
   const stop = /\b(stop calling|do not call|don't call|not interested|end (the )?call|leave me alone)\b/i.exec(text)
   const time = /\b(i(?:'m| am) busy|in a rush|hurry|make it quick|only have (?:a |one |two |\d+ )?minute|call (?:me )?(?:back|later))\b/i.exec(text)

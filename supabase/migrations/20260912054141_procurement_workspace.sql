@@ -1,4 +1,3 @@
--- One business owner per workspace for the initial product. Team membership is not implied.
 create table public.recovery_requests (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -20,7 +19,6 @@ create table public.supplier_imports (
   unique (id, owner_id)
 );
 
--- Only trusted backend jobs can write registry evidence, quotes and call records.
 create table public.supplier_verifications (
   supplier_id uuid primary key,
   owner_id uuid not null,

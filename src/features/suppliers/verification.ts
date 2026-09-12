@@ -2,7 +2,6 @@ export type ImportedSupplier = {
   id: string; name: string; abn: string; phone: string; importedAt: string;
   status: 'Awaiting registry check'; authorised: false;
 }
-// Australian Business Register modulus-89 checksum. Not a registry lookup.
 export function checkAbn(value: string) {
   if (!/^[\d\s]+$/.test(value)) return false
   const digits = value.replace(/\s/g, '')

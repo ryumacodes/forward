@@ -26,8 +26,6 @@ create table public.negotiation_policies (
   unique (request_id)
 );
 
--- A backend worker writes model output and the source evidence together. The model's
--- output is never treated as permission to contact or purchase.
 create table public.intake_results (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,

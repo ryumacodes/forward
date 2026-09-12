@@ -10,7 +10,6 @@ export function AuthGate({children}:{children:ReactNode}) {
   const [error,setError] = useState('')
   useEffect(() => {
     if(!supabase) return
-    // INITIAL_SESSION and subsequent changes share one ordered subscription.
     const {data:{subscription}} = supabase.auth.onAuthStateChange((_event,session) => {setUser(session?.user ?? null);setLoading(false)})
     return () => subscription.unsubscribe()
   },[])

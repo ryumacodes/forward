@@ -1,6 +1,5 @@
 import { calculateQuote, type QuoteInput } from './calculator'
 import { assessConversation } from './signals'
-/** Configure matching client tools on the ElevenLabs agent; these tools never place orders. */
 export const negotiationClientTools = {
   calculate_quote: (parameters: QuoteInput) => {
     try { return JSON.stringify({ok:true,...calculateQuote(parameters)},(_,value) => typeof value === 'bigint' ? value.toString() : value) }

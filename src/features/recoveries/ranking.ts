@@ -11,7 +11,6 @@ export function canPurchase(offer: Offer, request: Recovery) {
   return request.purchaseMode === 'preauthorised' && offer.authorised && offer.abnVerified &&
     Object.values({...validateOffer(offer, request), ...paymentChecks(offer, request)}).every(Boolean)
 }
-/** Rank only complete, constraint-compatible demo offers; a rank never authorises a purchase. */
 export function rankOffers(offers: Offer[], request: Recovery) {
   return offers.map(offer => {
     const checks = {...validateOffer(offer, request), ...paymentChecks(offer, request)}

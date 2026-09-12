@@ -22,7 +22,6 @@ test('Supabase schema isolates owners and protects backend-only evidence', async
   await expect(db.query("insert into public.supplier_verifications(supplier_id,owner_id,active,legal_name) select id,owner_id,true,name from public.supplier_imports")).rejects.toThrow()
   await db.query('insert into public.discovery_profiles(owner_id,name,business_type,weights,hard_rules) values ($1,$2,$3,$4,$5)',[ownerA,'Hospitality','hospitality',{deliveryFit:25},{abnActive:true}])
   await expect(db.query('insert into public.intake_results(owner_id,source_type,model,normalized,source_hash) values ($1,$2,$3,$4,$5)',[ownerA,'email','gpt-5.6-luna',{},'hash'])).rejects.toThrow()
-  // Owners cannot bypass the backend's Needs approval transition.
   expect((await db.query("update public.recovery_requests set status='Approved' returning id")).rows).toHaveLength(0)
   await db.exec(`set request.jwt.claim.sub='${ownerB}';`)
   expect((await db.query('select * from public.recovery_requests')).rows).toHaveLength(0)

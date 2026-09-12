@@ -4,6 +4,12 @@ import { useVoiceAgent } from '../features/voice/useVoiceAgent'
 import { VoiceOrb } from './VoiceOrb'
 import type { Recovery } from '../features/recoveries/data'
 type Recognition = { lang: string; continuous: boolean; interimResults: boolean; start: () => void; stop: () => void; onresult: ((event: { results: { transcript: string }[][] }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null }
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => Recognition
+    webkitSpeechRecognition?: new () => Recognition
+  }
+}
 export function NewRecovery({ onClose, onCreate }: { onClose: () => void; onCreate: (request: Recovery) => void | Promise<void> }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const recognition = useRef<Recognition | null>(null)
@@ -23,8 +29,7 @@ export function NewRecovery({ onClose, onCreate }: { onClose: () => void; onCrea
   function listen() {
     if (agent.configured) { void agent.toggle(); return }
     if (listening) { recognition.current?.stop(); return }
-    const browser = window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition }
-    const API = browser.SpeechRecognition || browser.webkitSpeechRecognition
+    const API = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!API) { setMessage('Voice input is unavailable in this browser. Type your request below.'); return }
     const instance = new API(); recognition.current = instance
     instance.lang = 'en-AU'; instance.continuous = false; instance.interimResults = false

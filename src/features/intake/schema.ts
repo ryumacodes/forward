@@ -39,14 +39,18 @@ export function previewNormalize(source: IntakeSource, text: string): Normalized
   const itemMatch = /(?:need|supply|quote(?: for)?)\s+(?:about\s+)?(?:\d+(?:\.\d+)?\s*(?:kg|kilos?|litres?|liters?|l|units?|boxes?|cases?)\s+(?:of\s+)?)?([^,.]+?)(?=\s+by\b|\s+(?:under|for|at)\s+\$|[,.]|$)/i.exec(text)
   const sentimentCue = stop ? 'stop' : frustrated ? 'frustrated' : time ? 'time_pressure' : 'neutral'
   const missingFields = [...(!itemMatch ? ['item'] : []),...(!quantityMatch ? ['quantity'] : []),...(!budgetMatch ? ['budget'] : [])]
-  const evidence = [
-    itemMatch && {field:'item',text:itemMatch[0]}, quantityMatch && {field:'quantity',text:quantityMatch[0]}, budgetMatch && {field:'budgetCents',text:budgetMatch[0]},
-    paymentMatch && {field:'paymentDays',text:paymentMatch[0]}, depositMatch && {field:'depositBps',text:depositMatch[0]}, (stop || time || frustrated) && {field:'sentimentCue',text:(stop || time || frustrated)![0]},
-  ].filter(Boolean) as {field:string;text:string}[]
+  const evidence: NormalizedIntake['evidence'] = []
+  if (itemMatch) evidence.push({field:'item',text:itemMatch[0]})
+  if (quantityMatch) evidence.push({field:'quantity',text:quantityMatch[0]})
+  if (budgetMatch) evidence.push({field:'budgetCents',text:budgetMatch[0]})
+  if (paymentMatch) evidence.push({field:'paymentDays',text:paymentMatch[0]})
+  if (depositMatch) evidence.push({field:'depositBps',text:depositMatch[0]})
+  const cue = stop ?? time ?? frustrated
+  if (cue) evidence.push({field:'sentimentCue',text:cue[0]})
   return {
     source, summary:text.trim().slice(0,180), intent:stop ? 'opt_out' : /\b(accept|confirm|go ahead)\b/i.test(text) ? 'confirmation' : /\b(offer|quote|price)\b/i.test(text) ? 'quote' : 'source',
     item:itemMatch?.[1]?.trim() ?? null, quantity:quantityMatch ? Number(quantityMatch[1]) : null, unit:quantityMatch?.[2]?.toLowerCase() ?? null,
     budgetCents:budgetMatch ? Math.round(Number(budgetMatch[1].replace(',','')) * 100) : null, deadline:null, paymentDays:paymentMatch ? Number(paymentMatch[1]) : null,
-    depositBps:depositMatch ? Math.round(Number(depositMatch[1]) * 100) : null, sentimentCue, confidence:Math.max(.35,.95 - missingFields.length * .17), missingFields, evidence,
+    depositBps:depositMatch ? Math.round(Number(depositMatch[1]) * 100) : null, sentimentCue, confidence:(3 - missingFields.length) / 3, missingFields, evidence,
   }
 }

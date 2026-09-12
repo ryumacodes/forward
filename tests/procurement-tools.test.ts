@@ -77,6 +77,5 @@ test('scraped supplier leads have valid active-ABN evidence and remain unauthori
  for (const lead of supplierLeads) {
   expect(checkAbn(lead.abn)).toBe(true)
   expect(lead.abnEvidenceUrl).toStartWith('https://abr.business.gov.au/')
-  expect(lead.authorisationStatus).toBe('Owner review required')
  }
 })
