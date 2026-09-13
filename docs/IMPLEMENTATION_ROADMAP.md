@@ -25,9 +25,10 @@ Backfill is positioned as an emergency and everyday procurement agent for owner-
   - Persist provider events and normalize real transcripts into comparable supplier quotes.
   - Remove static quotes from the connected workspace.
   - HMAC-verified, idempotent post-call ingestion now stores provider transcripts, applies supplier opt-outs, extracts only supplier-stated quote facts with evidence, reconciles totals in code, flags incomplete terms, and feeds connected-workspace rankings.
-- [ ] Email, SMS, approvals, and purchasing
+- [x] Email, SMS, approvals, and purchasing
   - Send written briefs and approval requests through audited channels.
   - Never place a purchase outside explicit owner authority.
+  - Resend supplier briefs and purchase orders use an audited idempotent outbox; Twilio owner-approval SMS is single-attempt and links back to the app. A purchase order requires a second explicit owner click and a fresh server-side recheck of ABR, authorisation, opt-out, quote completeness, budget, quantity, delivery, payment, deposit, and substitution rules. No automatic payment exists.
 - [ ] Production deployment and evaluation
   - Publish a stable URL, rehearse the live demo path, and document costs and operational limitations.
   - Measure extraction accuracy, missing-field recall, supplier eligibility decisions, ranking consistency, and negotiation-policy violations.

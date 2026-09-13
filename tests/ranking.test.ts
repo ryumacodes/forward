@@ -15,9 +15,9 @@ test('fees and deposits outside limits fail even when base price fits', () => {
 test('unknown terms cannot be treated as agreed terms', () => {
   expect(paymentChecks({...offers[0],termsConfirmed:false},request)['Payment period']).toBe(false)
 })
-test('rank does not bypass ABN or owner authorisation', () => {
+test('purchase never bypasses explicit owner approval', () => {
   expect(canPurchase(offers[0],{...request,purchaseMode:'preauthorised'})).toBe(false)
   expect(canPurchase({...offers[0],abnVerified:true},{...request,purchaseMode:'confirm'})).toBe(false)
-  expect(canPurchase({...offers[0],abnVerified:true},{...request,purchaseMode:'preauthorised'})).toBe(true)
+  expect(canPurchase({...offers[0],abnVerified:true},{...request,purchaseMode:'preauthorised'})).toBe(false)
   expect(canPurchase({...offers[0],abnVerified:true,depositPercent:25},{...request,purchaseMode:'preauthorised'})).toBe(false)
 })

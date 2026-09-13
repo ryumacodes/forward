@@ -3,6 +3,7 @@ import { AlertTriangle, Check, Clock3, ExternalLink, Phone, Plus, ShieldCheck, X
 import { prepareSupplier, type ImportedSupplier } from '../features/suppliers/verification'
 import { authoriseVerifiedSupplier, verifySupplierAbn } from '../features/suppliers/registry'
 import { startSupplierCall } from '../features/voice/outbound'
+import { runProcurementAction } from '../features/communications/service'
 
 type SupplierImportProps = {
   suppliers: ImportedSupplier[]
@@ -42,6 +43,11 @@ export function SupplierImport({suppliers,onImport,onUpdate,activeRequestId,onCa
     catch(err){setError(err instanceof Error?err.message:'Unable to start this call.')}
     finally{setWorkingId('')}
   }
+  async function emailBrief(supplier:ImportedSupplier){
+    setWorkingId(supplier.id);setError('')
+    try{const result=await runProcurementAction('email_brief',{supplierId:supplier.id,requestId:activeRequestId});onCallStarted?.(`Supplier brief email ${result.status}.`)}catch(err){setError(err instanceof Error?err.message:'Unable to email the supplier brief.')}
+    finally{setWorkingId('')}
+  }
 
   return <section className="supplier-import">
     <div className="section-header"><div><h2>Supplier verification queue</h2><p>Import → live ABR evidence → owner confirmation → authorised outreach.</p></div><button className="primary" onClick={() => setOpen(true)}><Plus size={17}/> Import supplier</button></div>
@@ -59,10 +65,11 @@ export function SupplierImport({suppliers,onImport,onUpdate,activeRequestId,onCa
           {!supplier.authorised && <button className="secondary" disabled={workingId===supplier.id} onClick={()=>verify(supplier)}>{workingId===supplier.id?'Checking ABR…':verification?'Refresh ABR evidence':'Verify with ABR'}</button>}
           {!supplier.authorised&&ready&&<button className="primary" disabled={workingId===supplier.id} onClick={()=>authorise(supplier)}>{workingId===supplier.id?'Authorising…':'Confirm contact & authorise'}</button>}
           {supplier.authorised&&<button className="primary" disabled={workingId===supplier.id||!activeRequestId} onClick={()=>call(supplier)}><Phone size={14}/>{workingId===supplier.id?'Starting call…':activeRequestId?'Start live quote call':'Select a recovery first'}</button>}
+          {supplier.authorised&&supplier.email&&<button className="secondary" disabled={workingId===supplier.id||!activeRequestId} onClick={()=>emailBrief(supplier)}>{workingId===supplier.id?'Sending…':'Email written brief'}</button>}
         </div>
         <p className="registry-caveat"><ShieldCheck size={14}/>{supplier.authorised?'Owner-authorised for outreach. Contact policy and opt-out checks still run before every call.':'A checksum or public-page link never authorises outreach. Live evidence and owner confirmation are both required.'}</p>
       </article>
     })}
-    {open && <dialog className="voice-dialog" aria-labelledby="import-title" ref={node => {if(node && !node.open)node.showModal()}} onCancel={() => setOpen(false)}><form onSubmit={async e => {e.preventDefault();if(saving)return;setSaving(true);const data=new FormData(e.currentTarget);try {await onImport(prepareSupplier(String(data.get('name')),String(data.get('abn')),String(data.get('phone')),suppliers));setOpen(false);setError('')} catch(err) {setError(err instanceof Error ? err.message : 'Unable to import supplier.')}finally{setSaving(false)}}}><div className="modal-head"><h2 id="import-title">Import supplier</h2><button type="button" className="icon-button" aria-label="Close import" onClick={() => setOpen(false)}><X size={20}/></button></div><p className="muted">Add the supplier exactly as you know it. Importing never grants permission to call or buy.</p><label>Business name<input name="name" required maxLength={160}/></label><label>ABN<input name="abn" inputMode="numeric" placeholder="11 digits" required maxLength={20}/></label><label>Contact phone<input name="phone" type="tel" required maxLength={22}/></label>{error && <p role="alert" className="form-error">{error}</p>}<button className="primary full" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Check & queue for verification'}</button><p className="voice-message">The ABN checksum runs on import. Official verification remains a separate server-side step.</p></form></dialog>}
+    {open && <dialog className="voice-dialog" aria-labelledby="import-title" ref={node => {if(node && !node.open)node.showModal()}} onCancel={() => setOpen(false)}><form onSubmit={async e => {e.preventDefault();if(saving)return;setSaving(true);const data=new FormData(e.currentTarget);try {await onImport(prepareSupplier(String(data.get('name')),String(data.get('abn')),String(data.get('phone')),suppliers,String(data.get('email')||'')));setOpen(false);setError('')} catch(err) {setError(err instanceof Error ? err.message : 'Unable to import supplier.')}finally{setSaving(false)}}}><div className="modal-head"><h2 id="import-title">Import supplier</h2><button type="button" className="icon-button" aria-label="Close import" onClick={() => setOpen(false)}><X size={20}/></button></div><p className="muted">Add the supplier exactly as you know it. Importing never grants permission to call or buy.</p><label>Business name<input name="name" required maxLength={160}/></label><label>ABN<input name="abn" inputMode="numeric" placeholder="11 digits" required maxLength={20}/></label><label>Contact phone<input name="phone" type="tel" required maxLength={22}/></label><label>Supplier email (for written briefs and purchase orders)<input name="email" type="email" maxLength={254}/></label>{error && <p role="alert" className="form-error">{error}</p>}<button className="primary full" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Check & queue for verification'}</button><p className="voice-message">The ABN checksum runs on import. Official verification remains a separate server-side step.</p></form></dialog>}
   </section>
 }

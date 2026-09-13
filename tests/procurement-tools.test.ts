@@ -10,6 +10,7 @@ import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
 import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
 import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature } from '../src/features/voice/webhook'
+import { canPurchase } from '../src/features/recoveries/ranking'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -18,8 +19,10 @@ test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('00000000000')).toBe(false)
 })
 test('imports remain unauthorised and reject duplicate ABNs',()=>{
- const supplier=prepareSupplier('Example','51 824 753 556','03 9000 0000',[])
+ const supplier=prepareSupplier('Example','51 824 753 556','03 9000 0000',[],'orders@example.com')
  expect(supplier.authorised).toBe(false)
+ expect(supplier.email).toBe('orders@example.com')
+ expect(()=>prepareSupplier('Other','11 111 111 111','03 9000 0000',[],'not-an-email')).toThrow()
  expect(()=>prepareSupplier('Other','51824753556','03 9000 0000',[supplier])).toThrow('already')
  expect(eligibleForAuthorisation()).toBe(false)
  expect(eligibleForAuthorisation({source:'ABR',active:true,legalName:'Example',checkedAt:'2000-01-01',nameMatched:true,contactConfirmed:true})).toBe(false)
@@ -61,6 +64,11 @@ test('negotiation bounds counter then escalate and never override a stop',()=>{
  expect(evaluateNegotiation(defaultNegotiationPolicy,base).action).toBe('counter')
  expect(evaluateNegotiation(defaultNegotiationPolicy,{...base,counteroffersMade:2}).action).toBe('escalate')
  expect(evaluateNegotiation(defaultNegotiationPolicy,{...base,supplierAskedToStop:true}).action).toBe('stop')
+})
+test('a qualifying quote still requires an explicit owner purchase action',()=>{
+ const request={id:'REC-1',item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-13T08:00',location:'Melbourne',status:'Needs approval' as const,category:'Food',purchaseMode:'preauthorised',minimumPaymentDays:14,maximumDepositPercent:0}
+ const offer={id:'Q-1',name:'Supplier',initials:'S',quantity:30,price:315,delivery:'2026-09-13T07:00',onTime:true,exact:true,minutes:'1m',paymentDays:14,depositPercent:0,fees:0,originalPaymentDays:0,onTimeDeliveries:10,completedOrders:10,authorised:true,abnVerified:true,termsConfirmed:true}
+ expect(canPurchase(offer,request)).toBe(false)
 })
 test('contact policy blocks unverified, repeated and out-of-hours calls',()=>{
  const result=checkContactPolicy({abnVerified:false,authorised:true,optedOut:false,localHour:18,attemptsToday:2,businessName:'Cafe',callbackNumber:'03 9000 0000'})

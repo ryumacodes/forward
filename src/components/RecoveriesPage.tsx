@@ -8,6 +8,7 @@ type RecoveriesPageProps = {
   recoveries: Recovery[]
   offers: Offer[]
   selectedId: string
+  live: boolean
   onSelect: (id: string) => void
   onCreate: () => void
   onTranscript: (offer: Offer) => void
@@ -26,7 +27,7 @@ function deadlineLabel(value: string) {
   return new Date(value).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
-export function RecoveriesPage({ recoveries, offers, selectedId, onSelect, onCreate, onTranscript }: RecoveriesPageProps) {
+export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect, onCreate, onTranscript }: RecoveriesPageProps) {
   const [filter, setFilter] = useState<RecoveryFilter>('All')
   const [query, setQuery] = useState('')
   const [showQuotes, setShowQuotes] = useState(false)
@@ -54,7 +55,7 @@ export function RecoveriesPage({ recoveries, offers, selectedId, onSelect, onCre
     <div className="recovery-summary" aria-label="Recovery summary">
       <div><span>Open recoveries</span><strong>{String(open).padStart(2, '0')}</strong><small>Across active sourcing jobs</small></div>
       <div className={awaiting ? 'attention' : ''}><span>Needs your approval</span><strong>{String(awaiting).padStart(2, '0')}</strong><small>{awaiting ? 'A quote decision is waiting' : 'Nothing waiting on you'}</small></div>
-      <div><span>Active supplier calls</span><strong>{recoveries.filter(recovery => recovery.status === 'Calling suppliers').length}</strong><small>Demo outreach in progress</small></div>
+      <div><span>Active supplier calls</span><strong>{recoveries.filter(recovery => recovery.status === 'Calling suppliers').length}</strong><small>{live?'Live sourcing jobs in progress':'Demo outreach in progress'}</small></div>
       <div><span>Open budget protected</span><strong>{money(protectedBudget)}</strong><small>Maximum authorised spend</small></div>
     </div>
 
@@ -96,7 +97,7 @@ export function RecoveriesPage({ recoveries, offers, selectedId, onSelect, onCre
         </div>
 
         <section className="next-action-card">
-          <span className="eyebrow">CURRENT STEP</span><h3>{state.action}</h3><p>{selected.status === 'Needs approval' ? 'Backfill found one quote that satisfies the request. Review the recommendation before any supplier is confirmed.' : selected.status === 'Calling suppliers' ? 'The agent is working through the authorised supplier list and recording comparable terms.' : selected.status === 'Approved' ? 'The preferred supplier has been selected. No live order has been sent in this demo.' : 'The brief is complete and waiting to enter the supplier queue.'}</p>
+          <span className="eyebrow">CURRENT STEP</span><h3>{state.action}</h3><p>{selected.status === 'Needs approval' ? 'Backfill found a quote that may satisfy the request. Review its evidence before explicitly approving any purchase order.' : selected.status === 'Calling suppliers' ? 'The agent is working through the authorised supplier list and recording comparable terms.' : selected.status === 'Approved' ? (live?'The approved purchase state is retained in your workspace with its audit trail.':'The preferred supplier has been selected. No live order has been sent in this demo.') : 'The brief is complete and waiting to enter the supplier queue.'}</p>
         </section>
 
         <div className="recovery-facts">
@@ -123,7 +124,7 @@ export function RecoveriesPage({ recoveries, offers, selectedId, onSelect, onCre
           })}
         </div>}
 
-        {selected.status === 'Calling suppliers' && <div className="live-activity-card"><div><Phone size={16}/><span><strong>Supplier outreach</strong><small>2 completed · 1 unanswered · 1 queued</small></span></div><span className="activity-pulse"/> </div>}
+        {selected.status === 'Calling suppliers' && <div className="live-activity-card"><div><Phone size={16}/><span><strong>Supplier outreach</strong><small>{live?`${selectedOffers.length} completed quote${selectedOffers.length===1?'':'s'} · open the supplier queue for current attempts`:'2 completed · 1 unanswered · 1 queued'}</small></span></div><span className="activity-pulse"/> </div>}
       </aside>
     </div>
   </section>

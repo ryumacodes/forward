@@ -10,7 +10,7 @@ Backfill is a mobile-first voice procurement agent for Australian small business
 4. Suppliers are contacted by voice first, with SMS or email available for follow-up.
 5. Quotes are normalised and ranked by total cost, availability, delivery, payment terms, reliability, and call sentiment.
 6. Backfill negotiates within explicit price and payment-term limits.
-7. An order proceeds automatically only when it fits a pre-authorised policy. Every other order is returned to the owner for approval by call or text.
+7. Every purchase order requires a separate, explicit owner approval. Backfill never commits or pays automatically.
 
 The language model extracts details and prepares natural conversation. Deterministic application rules control supplier eligibility, negotiation limits, ranking, disclosure, and purchase approval.
 
@@ -25,6 +25,7 @@ The language model extracts details and prepares natural conversation. Determini
 - Live ABR verification and a separate owner-authorisation gate
 - Single-supplier ElevenLabs SIP outbound calls with pre-dispatch trust checks and per-call policy snapshots
 - HMAC-verified post-call transcript ingestion and supplier-only structured quote extraction
+- Audited supplier email, owner approval SMS, and explicit owner-approved purchase orders
 - Quote comparison and supplier ranking
 - Price and payment-term negotiation guardrails
 - Sentiment, patience, and negotiation-readiness signals
@@ -68,12 +69,13 @@ Link the Supabase CLI to your project, then apply the migrations and deploy the 
 
 ```bash
 supabase db push
-supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna OPENAI_DISCOVERY_MODEL=gpt-5.6-terra OPENAI_EMBEDDING_MODEL=text-embedding-3-small ABR_AUTH_GUID=your_abr_guid ELEVENLABS_API_KEY=your_key ELEVENLABS_AGENT_ID=your_agent_id ELEVENLABS_PHONE_NUMBER_ID=your_sip_phone_id ELEVENLABS_CALLBACK_NUMBER=+61390000000 ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret CALLING_BUSINESS_NAME="Your Business"
+supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna OPENAI_DISCOVERY_MODEL=gpt-5.6-terra OPENAI_EMBEDDING_MODEL=text-embedding-3-small ABR_AUTH_GUID=your_abr_guid ELEVENLABS_API_KEY=your_key ELEVENLABS_AGENT_ID=your_agent_id ELEVENLABS_PHONE_NUMBER_ID=your_sip_phone_id ELEVENLABS_CALLBACK_NUMBER=+61390000000 ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret CALLING_BUSINESS_NAME="Your Business" RESEND_API_KEY=your_key RESEND_FROM_EMAIL=procurement@example.com TWILIO_ACCOUNT_SID=your_sid TWILIO_AUTH_TOKEN=your_token TWILIO_SMS_FROM=+61... OWNER_APPROVAL_PHONE=+61... APP_BASE_URL=https://your-production-url.example
 supabase functions deploy normalize-intake
 supabase functions deploy verify-abn
 supabase functions deploy discover-suppliers
 supabase functions deploy start-supplier-call
 supabase functions deploy elevenlabs-webhook --no-verify-jwt
+supabase functions deploy procurement-action
 ```
 
 Database migrations live in `supabase/migrations`. Register for the free ABN Lookup web service to obtain the server-side `ABR_AUTH_GUID`; a checksum alone is never shown as official registry verification. Discovery searches public supplier pages, rejects private/local URLs before retrieval, stores a bounded text excerpt plus its source and embedding, and presents results as leads—not authorised suppliers. Until Supabase credentials are configured, the app uses its clearly labelled prototype data.
@@ -99,4 +101,4 @@ data/                  Researched supplier lead exports
 
 ## Prototype status
 
-The repository currently implements connected intake, ABR verification, evidence-backed web discovery, trust-gated ElevenLabs outbound calls, and HMAC-verified transcript/quote ingestion, but they still require deployment credentials. SMS and email delivery, purchasing, and production hosting remain to be connected. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before Backfill can contact them.
+The repository implements connected intake, ABR verification, evidence-backed web discovery, trust-gated ElevenLabs outbound calls, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, and explicit owner-approved purchase orders. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before Backfill can contact them.
