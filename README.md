@@ -26,6 +26,7 @@ Every account receives a personal organisation during signup, named from the use
 - Typed fallback for browsers without voice access
 - Supplier importing with ABN validation states
 - Melbourne supplier lead dataset for discovery testing
+- On-demand OpenStreetMap proximity view with clearly labelled suburb-centroid distance estimates
 - Live public-web supplier discovery with attributable evidence and semantic product matching
 - Live ABR verification and a separate owner-authorisation gate
 - Durable, sequential ElevenLabs SIP calling queues with batch selection, atomic claims, retries, cancellation, live status, pre-dispatch trust checks, and per-call policy snapshots
@@ -85,6 +86,8 @@ supabase functions deploy procurement-action
 ```
 
 Database migrations live in `supabase/migrations`. Register for the free ABN Lookup web service to obtain the server-side `ABR_AUTH_GUID`; a checksum alone is never shown as official registry verification. Discovery searches public supplier pages, rejects private/local URLs before retrieval, stores a bounded text excerpt plus its source and embedding, and presents results as leads—not authorised suppliers. Until Supabase credentials are configured, the app uses its clearly labelled prototype data.
+
+The sample proximity view uses cached suburb centroids and Haversine straight-line distance, not exact address geocoding or route distance. OpenStreetMap tiles load only when the owner opens the map and retain visible contributor attribution. Production geocoding must be server-side, cached, rate-limited, provider-configurable, and record its source and precision.
 
 Enable the ElevenLabs voicemail-detection system tool on the owner-notification agent. Busy, declined, and no-answer outcomes arrive as call-initiation failures; voicemail is detected from that system tool in the signed post-call transcript. `OWNER_NOTIFICATION_EMAIL` is optional: when blank, SourcePilot uses the authorising account’s Supabase Auth email. AgentMail is used only for owner fallback notifications; Resend remains responsible for supplier briefs and purchase orders.
 

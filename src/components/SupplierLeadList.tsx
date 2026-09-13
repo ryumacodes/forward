@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { ExternalLink, MapPin, Search, ShieldCheck } from '../icons'
 import { supplierLeads } from '../data/supplierLeads'
+import { SupplierProximityMap } from './SupplierProximityMap'
 
-export function SupplierLeadList() {
+export function SupplierLeadList({deliveryLocation='24 Flinders Lane, Melbourne'}:{deliveryLocation?:string}={}) {
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const normalizedQuery = query.trim().toLowerCase()
@@ -23,6 +24,7 @@ export function SupplierLeadList() {
         <Search size={17}/>
         <input aria-label="Search supplier leads" placeholder="Search supplier, category or suburb" value={query} onChange={event => setQuery(event.target.value)}/>
       </label>
+      <SupplierProximityMap leads={filtered} deliveryLocation={deliveryLocation}/>
       <div className="lead-list">
         {filtered.map(lead => (
           <article className="lead-card" key={lead.id}>
