@@ -6,11 +6,14 @@ import { defaultNegotiationPolicy, evaluateNegotiation } from '../src/features/n
 import { checkContactPolicy, normalizeAustralianPhone, outboundTrustPrompt, trustedProductIntroduction } from '../src/features/voice/trustPolicy'
 import { demoCandidates, discoveryProfiles, rankCandidates } from '../src/features/discovery/engine'
 import { previewNormalize } from '../src/features/intake/schema'
+import { clarifyQuestions, applyResponse, confirmIntake } from '../src/features/intake/clarify'
+import { intakeClientTools } from '../src/features/intake/agentTools'
 import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
 import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
 import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature } from '../src/features/voice/webhook'
 import { canPurchase } from '../src/features/recoveries/ranking'
+import { checkSupplies, allSupplyLeads } from '../src/features/supplycheck/engine'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -103,7 +106,55 @@ test('intake preview resolves relative deadlines and delivery evidence',()=>{
  expect(result.unit).toBe('kg')
  expect(result.deadline).toBe('2026-09-13T08:00')
  expect(result.deliveryLocation).toBe('24 Flinders Lane, Melbourne')
- expect(result.missingFields).toEqual([])
+ expect(result.missingFields).toContain('halal')
+ expect(result.missingFields).toContain('freshness')
+})
+test('spoken request extracts item, quantity, budget, and deadline',()=>{
+ const result=previewNormalize('voice_call','I want 30 kg chicken by 8pm sunday for 500$ or less')
+ expect(result.item).toBe('chicken')
+ expect(result.quantity).toBe(30)
+ expect(result.budgetCents).toBe(50000)
+ expect(result.deadline).toContain('Sunday')
+ expect(result.deadline).toContain('8pm')
+ expect(result.missingFields).toContain('halal')
+ expect(result.missingFields).toContain('cut')
+ expect(result.missingFields).toContain('freshness')
+})
+test('clarify pipeline asks halal then cut once quantity is known',()=>{
+ const first=previewNormalize('voice_call','I want 30 kg chicken by 8pm sunday for 500$ or less')
+ const questions=clarifyQuestions(first)
+ expect(questions[0].field).toBe('halal')
+ expect(questions[0].prompt.toLowerCase()).toContain('halal')
+ const second=applyResponse(first,'halal','Yes, halal is important')
+ expect(second.halal).toBe(true)
+ expect(second.missingFields).not.toContain('halal')
+ const third=applyResponse(second,'cut','Whole chicken, please')
+ expect(third.cut).toBe('whole')
+ expect(third.missingFields).not.toContain('cut')
+})
+test('confirmation recaps every captured detail before extraction',()=>{
+ let intake=previewNormalize('voice_call','I want 30 kg chicken by 8pm sunday for 500$ or less')
+ intake=applyResponse(intake,'halal','Yes halal')
+ intake=applyResponse(intake,'cut','whole')
+ intake=applyResponse(intake,'freshness','frozen')
+ const script=confirmIntake(intake)
+ expect(script).toContain('30 kg')
+ expect(script).toContain('8pm')
+ expect(script).toContain('$500')
+ expect(script).toContain('halal')
+ expect(script).toContain('whole')
+ expect(script).toContain('frozen')
+ expect(script).toContain('Is that right')
+ expect(intake.missingFields).toHaveLength(0)
+})
+test('intake client tool returns next question then a confirmation script',()=>{
+ const first=JSON.parse(intakeClientTools.clarify_intake_details({item:'chicken',quantity:30,unit:'kg'}))
+ expect(first.ok).toBe(true)
+ expect(first.allClear).toBe(false)
+ expect(first.askNext.field).toBe('halal')
+ const answered=JSON.parse(intakeClientTools.apply_intake_answer({intake:{item:'chicken',quantity:30,unit:'kg'},field:'halal',response:'Yes, halal'}))
+ expect(answered.ok).toBe(true)
+ expect(answered.missingFields).toContain('cut')
 })
 test('scraped supplier leads have valid active-ABN evidence and remain unauthorised',()=>{
  expect(supplierLeads.length).toBeGreaterThanOrEqual(8)
@@ -150,4 +201,28 @@ test('ElevenLabs webhooks require a fresh valid HMAC and preserve speaker eviden
  expect(transcriptText(turns)).toContain('SUPPLIER: The total is $315')
  expect(supplierTranscript(turns)).not.toContain('Can you quote')
  expect(supplierRequestedNoContact(supplierTranscript(turns))).toBe(true)
+})
+test('supply check ranks halal suppliers and attaches websites when halal is required',()=>{
+ const results=checkSupplies({item:'chicken breast fillets', quantity:30, unit:'kg', requiresHalal:true}, allSupplyLeads())
+ expect(results.length).toBeGreaterThan(0)
+ for (const result of results) {
+  expect(result.lead.halal).toBe(true)
+  expect(result.lead.website).toStartWith('https://')
+ }
+ for (const result of results) {
+  if (result.matchScore === 0) continue
+  expect(result.supplyPages.length).toBeGreaterThan(0)
+  expect(result.callBrief).toContain(result.lead.phone)
+ }
+})
+test('halal-supply check scores poultry specialists above broadline distributors',()=>{
+ const results=checkSupplies({item:'whole halal chicken', requiresHalal:true})
+ expect(results[0].matchScore).toBeGreaterThanOrEqual(results[1].matchScore)
+ const top=results[0]
+ expect(top.lead.id).toBeOneOf(['poultry-n-more','halal-madina','halal-map-food-services','halal-mfd-food','halal-eastern-halal','halal-al-abrar','tip-top-meats'])
+})
+test('non-halal request still lists qualifying halal leads without forcing halal filtering',()=>{
+ const results=checkSupplies({item:'beef short rib', quantity:10, unit:'kg'})
+ expect(results.some(result => result.lead.halal)).toBe(true)
+ expect(results.some(result => !result.lead.halal)).toBe(true)
 })

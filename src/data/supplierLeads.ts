@@ -15,6 +15,7 @@ export type SupplierLead = {
   paymentTerms?: string
   abnEvidenceUrl: string
   evidenceUrls: string[]
+  halal?: boolean
 }
 
 export const supplierLeads: SupplierLead[] = [
@@ -22,7 +23,7 @@ export const supplierLeads: SupplierLead[] = [
     id:'poultry-n-more',displayName:'Poultry N More',legalName:'POULTRY N MORE (AUST) PTY LTD',abn:'42 142 888 015',gstRegistered:true,
     location:'Factory 1 & 2, 220 Old Geelong Road, Hoppers Crossing VIC 3029',phone:'03 9748 4500',website:'https://poultrynmore.com.au/',
     categories:['Poultry','Chicken','Meat'],serviceArea:'All Victorian suburbs',deliveryNotes:'Website claims daily Victorian delivery; product PDF says orders before 5 pm for next-day delivery.',
-    certificationClaims:['HACCP system','Halal products','Refrigerated vehicles'],abnEvidenceUrl:'https://abr.business.gov.au/ABN/View/42142888015',evidenceUrls:['https://poultrynmore.com.au/about/','https://poultrynmore.com.au/wp-content/uploads/2023/08/PNM-Products-List.pdf'],
+    certificationClaims:['HACCP system','Halal products','Refrigerated vehicles'],halal:true,abnEvidenceUrl:'https://abr.business.gov.au/ABN/View/42142888015',evidenceUrls:['https://poultrynmore.com.au/about/','https://poultrynmore.com.au/wp-content/uploads/2023/08/PNM-Products-List.pdf'],
   },
   {
     id:'nice-n-fresh',displayName:'Nice N Fresh Poultry Supplies',legalName:'TOP CHOICE FOODS PTY LTD',abn:'32 682 759 995',gstRegistered:true,
@@ -34,7 +35,7 @@ export const supplierLeads: SupplierLead[] = [
     id:'tip-top-meats',displayName:'Tip Top Meats',legalName:'THE TRUSTEE FOR THE TIP TOP BUTCHERS TRUST',abn:'38 204 135 272',gstRegistered:true,
     location:'10 Raymond Road, Laverton North VIC 3026',phone:'03 9368 4500',website:'https://tiptopmeats.com.au/',
     categories:['Poultry','Chicken','Beef','Lamb','Pork','Foodservice meat'],serviceArea:'Victoria-wide',deliveryNotes:'Website claims Victoria-wide cold-chain delivery for commercial kitchens.',
-    certificationClaims:['HACCP certified facility','Halal certified','Supply-chain traceability','Temperature-controlled fleet'],abnEvidenceUrl:'https://abr.business.gov.au/ABN/View/38204135272',evidenceUrls:[],
+    certificationClaims:['HACCP certified facility','Halal certified','Supply-chain traceability','Temperature-controlled fleet'],halal:true,abnEvidenceUrl:'https://abr.business.gov.au/ABN/View/38204135272',evidenceUrls:[],
   },
   {
     id:'fastrac-foodservice',displayName:'Fastrac Foodservice',legalName:'FASTRAC FOODSERVICE PTY. LTD.',abn:'97 006 683 932',gstRegistered:true,
