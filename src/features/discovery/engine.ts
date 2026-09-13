@@ -92,7 +92,7 @@ export function scoreDiscoveredEvidence(input:{semanticScore:number;confidence:n
   const locality=locationTokens.some(token=>localityText.includes(token))?100:Math.round(input.confidence*55)
   const productText=input.products.join(' ').toLowerCase()
   const certifications=input.requiresHalal ? (/halal/.test(productText)?100:0) : Math.round(input.confidence*70)
-  const known:[DiscoveryFactor,number][]=[['productMatch',productMatch],['locality',locality],['certifications',certifications],['reliability',input.confidence*100]]
+  const known:[DiscoveryFactor,number][]=[['productMatch',productMatch],['deliveryFit',locality],['locality',locality],['certifications',certifications],['reliability',input.confidence*100]]
   const weight=known.reduce((sum,[factor])=>sum+profile.weights[factor],0)
   return Math.round(known.reduce((sum,[factor,value])=>sum+profile.weights[factor]*value,0)/weight)
 }

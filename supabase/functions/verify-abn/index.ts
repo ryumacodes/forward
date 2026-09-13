@@ -29,6 +29,8 @@ Deno.serve(async request=>{
     }
     if(!supplier.abn)return json({error:'Complete the supplier ABN and phone before verification.'},409)
     if(action==='authorise'){
+      const {data:membership}=await userClient.from('organization_members').select('role').eq('organization_id',organizationId).eq('user_id',user.id).single()
+      if(!membership||!['owner','admin'].includes(membership.role))return json({error:'Only an owner or administrator can authorise a supplier.'},403)
       const {data:evidence,error:evidenceError}=await serviceClient.from('supplier_verifications').select('active,legal_name,gst_registered,name_matched,contact_confirmed,checked_at').eq('supplier_id',supplier.id).eq('organization_id',organizationId).single()
       if(evidenceError||!evidence)return json({error:'Verify this supplier with ABR first.'},409)
       const age=Date.now()-Date.parse(evidence.checked_at)

@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
 import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature, type TranscriptTurn } from '../../../src/features/voice/webhook.ts'
-import { completeQueueItem, dispatchNextSupplierCall } from '../_shared/call-queue.ts'
+import { completeQueueItem, dispatchNextSupplierCall, retryQueueItemAfterInitiationFailure } from '../_shared/call-queue.ts'
 
 declare const EdgeRuntime:{waitUntil(promise:Promise<unknown>):void}
 
@@ -25,7 +25,7 @@ Deno.serve(async request=>{
     if(!call)return json({error:'Conversation is not registered.'},404)
     if(event.type==='call_initiation_failure'){
       await client.from('supplier_calls').update({status:'failed',provider_error:event.data.failure_reason||'Call initiation failed',completed_at:new Date().toISOString(),provider_analysis:event.data.metadata||{}}).eq('id',call.id)
-      await completeQueueItem(client,call.queue_item_id,'failed',event.data.failure_reason||'Call initiation failed')
+      await retryQueueItemAfterInitiationFailure(client,call.queue_item_id,call.id,event.data.failure_reason||'Call initiation failed')
       EdgeRuntime.waitUntil(dispatchNextSupplierCall(client,call.organization_id,call.request_id).catch(error=>console.error('Unable to continue supplier call queue',error)))
       return json({status:'received'})
     }
@@ -34,7 +34,7 @@ Deno.serve(async request=>{
     const transcript=transcriptText(turns).slice(0,100_000),supplierOnly=supplierTranscript(turns).slice(0,60_000)
     const optedOut=supplierRequestedNoContact(supplierOnly)
     await client.from('supplier_calls').update({status:optedOut?'stopped':'completed',transcript,transcript_json:turns,provider_analysis:event.data.analysis||{},do_not_contact:optedOut,completed_at:new Date().toISOString()}).eq('id',call.id)
-    await completeQueueItem(client,call.queue_item_id,'completed')
+    await completeQueueItem(client,call.queue_item_id,call.id,'completed')
     queueContext={client,organizationId:call.organization_id,requestId:call.request_id}
     if(optedOut)await client.from('suppliers').update({do_not_contact:true}).eq('id',call.supplier_id).eq('organization_id',call.organization_id)
     if(!supplierOnly.trim())return json({status:'received',quote:'no supplier speech'})

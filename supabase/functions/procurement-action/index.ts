@@ -24,11 +24,12 @@ Deno.serve(async request=>{
     const userClient=createClient(supabaseUrl,anonKey,{global:{headers:{Authorization:authorization}}})
     const {data:{user},error:userError}=await userClient.auth.getUser()
     if(userError||!user)return json({error:'Authentication is invalid.'},401)
-    const {data:membership}=await userClient.from('organization_members').select('organization_id').eq('organization_id',body.organizationId).eq('user_id',user.id).maybeSingle()
+    const {data:membership}=await userClient.from('organization_members').select('organization_id,role').eq('organization_id',body.organizationId).eq('user_id',user.id).maybeSingle()
     if(!membership)return json({error:'Organisation membership is required.'},403)
     if(body.action==='email_brief')return await emailBrief(client,body.organizationId,body.requestId,body.supplierId)
     const context=await quoteContext(client,body.organizationId,body.quoteId)
     if(body.action==='request_approval')return await requestApproval(client,body.organizationId,context)
+    if(!['owner','admin'].includes(membership.role))return json({error:'Only an owner or administrator can issue a purchase order.'},403)
     return await issuePurchaseOrder(client,body.organizationId,user.id,context,'explicit')
   }catch(error){return json({error:error instanceof Error?error.message:'Procurement action failed.'},500)}
 })

@@ -10,7 +10,7 @@ SourcePilot is a mobile-first voice procurement agent for Australian small busin
 4. Suppliers are contacted by voice first, with SMS or email available for follow-up.
 5. Quotes are normalised and ranked by total cost, availability, delivery, payment terms, reliability, and call sentiment.
 6. SourcePilot negotiates within explicit price and payment-term limits.
-7. Every purchase order requires a separate, explicit owner approval. SourcePilot never commits or pays automatically.
+7. A request can either require a separate owner approval or store an owner/admin pre-authorisation. Pre-authorised requests may issue one purchase order automatically only when every exact product, supplier, total, quantity, delivery, and payment rule passes. SourcePilot never initiates payment.
 
 The language model extracts details and prepares natural conversation. Deterministic application rules control supplier eligibility, negotiation limits, ranking, disclosure, and purchase approval.
 
@@ -29,7 +29,7 @@ Every account receives a personal organisation during signup, named from the use
 - Live ABR verification and a separate owner-authorisation gate
 - Durable, sequential ElevenLabs SIP calling queues with batch selection, atomic claims, retries, cancellation, live status, pre-dispatch trust checks, and per-call policy snapshots
 - HMAC-verified post-call transcript ingestion and supplier-only structured quote extraction
-- Audited supplier email, owner approval SMS, and explicit owner-approved purchase orders
+- Audited supplier email, owner approval SMS, and atomically reserved purchase orders using explicit approval or request-scoped pre-authorisation
 - Quote comparison and supplier ranking
 - Price and payment-term negotiation guardrails
 - Sentiment, patience, and negotiation-readiness signals
@@ -106,4 +106,4 @@ data/                  Researched supplier lead exports
 
 ## Prototype status
 
-The repository implements connected intake, ABR verification, evidence-backed web discovery, trust-gated ElevenLabs outbound calls, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, and explicit owner-approved purchase orders. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before SourcePilot can contact them.
+The repository implements connected intake, ABR verification, importable evidence-backed web discovery, request-specific buying profiles, trust-gated ElevenLabs outbound queues, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, and purchase orders backed by explicit approval or stored request-scoped pre-authorisation. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by an owner or administrator before SourcePilot can contact or buy from them.

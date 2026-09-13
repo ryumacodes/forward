@@ -15,9 +15,21 @@ test('fees and deposits outside limits fail even when base price fits', () => {
 test('unknown terms cannot be treated as agreed terms', () => {
   expect(paymentChecks({...offers[0],termsConfirmed:false},request)['Payment period']).toBe(false)
 })
-test('purchase never bypasses explicit owner approval', () => {
-  expect(canPurchase(offers[0],{...request,purchaseMode:'preauthorised'})).toBe(false)
+test('automatic purchase requires stored mode and every deterministic offer check', () => {
+  expect(canPurchase(offers[0],{...request,purchaseMode:'preauthorized'})).toBe(false)
   expect(canPurchase({...offers[0],abnVerified:true},{...request,purchaseMode:'confirm'})).toBe(false)
-  expect(canPurchase({...offers[0],abnVerified:true},{...request,purchaseMode:'preauthorised'})).toBe(false)
-  expect(canPurchase({...offers[0],abnVerified:true,depositPercent:25},{...request,purchaseMode:'preauthorised'})).toBe(false)
+  expect(canPurchase({...offers[0],abnVerified:true},{...request,purchaseMode:'preauthorized'})).toBe(true)
+  expect(canPurchase({...offers[0],abnVerified:true,depositPercent:25},{...request,purchaseMode:'preauthorized'})).toBe(false)
+})
+test('request buying profile changes the ranking trade-off',()=>{
+  const value={...offers[0],id:'value',price:250,onTimeDeliveries:8,completedOrders:10,abnVerified:true}
+  const reliable={...offers[0],id:'reliable',price:320,onTimeDeliveries:10,completedOrders:10,abnVerified:true}
+  expect(rankOffers([value,reliable],{...request,buyingProfile:'general'})[0].offer.id).toBe('value')
+  expect(rankOffers([value,reliable],{...request,buyingProfile:'hospitality'})[0].offer.id).toBe('reliable')
+})
+test('a live quote is not qualifying until supplier authorisation and ABN evidence are current',()=>{
+  const live={...offers[0],live:true,abnVerified:false}
+  const result=rankOffers([live],request)[0]
+  expect(result.qualifies).toBe(false)
+  expect(result.reasons).toContain('ABN current')
 })

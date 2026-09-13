@@ -62,16 +62,16 @@ Deno.serve(async request=>{
     const vectors=(embeddingBody.data as Array<{index:number;embedding:number[]}>).sort((a,b)=>a.index-b.index).map(item=>item.embedding)
     if(vectors.length!==usable.length+1||vectors.some(vector=>vector.length!==1536))return json({error:'Embedding provider returned an unexpected result.'},502)
     const queryVector=vectors[0],checkedAt=new Date().toISOString()
-    const profile=discoveryProfiles.find(item=>item.id===profileId)??discoveryProfiles[2]
+    const profile=discoveryProfiles.find(item=>item.id===profileId as DiscoveryProfileId)??discoveryProfiles[2]
     const suppliers=await Promise.all(usable.map(async(item,index)=>{
       const source=item.sources[0]
       const sourceHash=await sha256(`${source.url}\n${item.excerpt}`)
       const embedding=vectors[index+1]
       const semanticScore=Math.max(0,Math.min(1,cosineSimilarity(queryVector,embedding)))
-      const facts={locality:item.locality,summary:item.summary,products:item.products,phone:item.phone,email:item.email,confidence:item.confidence,sources:item.sources,semanticScore}
+      const profileScore=scoreDiscoveredEvidence({semanticScore,confidence:item.confidence,locality:item.locality,location,products:item.products,requiresHalal:body.requiresHalal},profile)
+      const facts={locality:item.locality,summary:item.summary,products:item.products,phone:item.phone,email:item.email,confidence:item.confidence,sources:item.sources,semanticScore,profileScore,profileId}
       const {data,error}=await serviceClient.from('supplier_evidence').upsert({organization_id:organizationId,search_query:query,supplier_name:item.name,website_url:item.websiteUrl,source_url:source.url,source_title:source.title,content_excerpt:item.excerpt,extracted_facts:facts,embedding_model:embeddingModel,embedding,source_hash:sourceHash,checked_at:checkedAt},{onConflict:'organization_id,source_hash'}).select('id').single()
       if(error)throw error
-      const profileScore=scoreDiscoveredEvidence({semanticScore,confidence:item.confidence,locality:item.locality,location,products:item.products,requiresHalal:body.requiresHalal},profile)
       return {id:data.id,name:item.name,websiteUrl:item.websiteUrl,locality:item.locality,summary:item.summary,products:item.products,phone:item.phone,email:item.email,confidence:item.confidence,semanticScore,profileScore,sources:item.sources,evidenceCheckedAt:checkedAt,mode:'live' as const}
     }))
     suppliers.sort((a,b)=>b.profileScore-a.profileScore||b.semanticScore-a.semanticScore||b.confidence-a.confidence||a.name.localeCompare(b.name))

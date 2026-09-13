@@ -79,10 +79,18 @@ async function dispatchJob(client:SupabaseClient,job:QueueJob):Promise<Dispatche
   return {callId:call.id,conversationId:providerBody.conversation_id,status:'initiated',firstMessage,queueItemId:job.id}
 }
 
-export async function completeQueueItem(client:SupabaseClient,queueItemId:string|undefined,status:'completed'|'failed'|'cancelled',error?:string){
+export async function completeQueueItem(client:SupabaseClient,queueItemId:string|undefined,callId:string,status:'completed'|'cancelled',error?:string){
   if(!queueItemId)return
   const now=new Date().toISOString()
-  await client.from('supplier_call_queue').update({status,last_error:error||null,lease_expires_at:null,worker_id:null,completed_at:now,updated_at:now}).eq('id',queueItemId).in('status',['processing','calling'])
+  await client.from('supplier_call_queue').update({status,last_error:error||null,lease_expires_at:null,worker_id:null,completed_at:now,updated_at:now}).eq('id',queueItemId).eq('call_id',callId).in('status',['processing','calling'])
+}
+
+export async function retryQueueItemAfterInitiationFailure(client:SupabaseClient,queueItemId:string|undefined,callId:string,error:string){
+  if(!queueItemId)return
+  const {data:item}=await client.from('supplier_call_queue').select('attempt_count,max_attempts').eq('id',queueItemId).eq('call_id',callId).maybeSingle()
+  if(!item)return
+  const retry=item.attempt_count<item.max_attempts,now=new Date().toISOString()
+  await client.from('supplier_call_queue').update({status:retry?'queued':'failed',call_id:null,last_error:error,available_at:now,lease_expires_at:null,worker_id:null,completed_at:retry?null:now,updated_at:now}).eq('id',queueItemId).eq('call_id',callId).eq('status','calling')
 }
 
 export async function cancelRequestQueue(client:SupabaseClient,organizationId:string,requestId:string){

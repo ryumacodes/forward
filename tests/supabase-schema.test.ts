@@ -12,6 +12,8 @@ const migrations=[
   '20260913003000_communications_and_orders.sql',
   '20260913062821_organization_workspaces.sql',
   '20260913070244_supplier_call_queue.sql',
+  '20260913071652_automated_sourcing_and_purchase.sql',
+  '20260913073802_harden_automated_purchase.sql',
 ]
 
 test('organisation membership isolates procurement data and protected evidence',async()=>{
@@ -31,8 +33,9 @@ test('organisation membership isolates procurement data and protected evidence',
 
     await db.exec(`set role authenticated; set request.jwt.claim.sub='${userA}';`)
     expect((await db.query<{name:string}>('select name from public.organizations')).rows.map(row=>row.name)).toEqual(["Alex Chen's workspace"])
-    await db.query('insert into public.procurement_requests(organization_id,details) values ($1,$2)',[userA,{item:'Chicken',quantity:30,budget:350}])
-    await db.query('insert into public.suppliers(organization_id,name,abn,phone) values ($1,$2,$3,$4)',[userA,'Example','51824753556','03 9000 0000'])
+    const created=await db.query<{id:string}>('select id from public.create_procurement_request_with_policy($1,$2)',[userA,{item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-14T08:00:00+10:00',location:'Melbourne',purchaseMode:'confirm',minimumPaymentDays:14,maximumDepositPercent:0}])
+    const createdRequestId=created.rows[0].id
+    await db.query('insert into public.suppliers(organization_id,name,abn,phone,email) values ($1,$2,$3,$4,$5)',[userA,'Example','51824753556','03 9000 0000','orders@example.com'])
     expect((await db.query('select * from public.procurement_requests')).rows).toHaveLength(1)
     await expect(db.query('insert into public.procurement_requests(organization_id,details) values ($1,$2)',[userB,{}])).rejects.toThrow()
     await expect(db.query('update public.procurement_requests set organization_id=$1',[userB])).rejects.toThrow()
@@ -51,6 +54,9 @@ test('organisation membership isolates procurement data and protected evidence',
     const business=await db.query<{create_organization:string}>("select public.create_organization('Flinders Kitchen')")
     const businessId=business.rows[0].create_organization
     expect((await db.query('select role from public.organization_members where organization_id=$1',[businessId])).rows).toEqual([{role:'owner'}])
+    const automatic=await db.query<{id:string}>('select id from public.create_procurement_request_with_policy($1,$2)',[userA,{item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-14T08:00:00+10:00',location:'Melbourne',purchaseMode:'preauthorized',minimumPaymentDays:14,maximumDepositPercent:0}])
+    expect((await db.query('select auto_purchase,preauthorized_by is not null as has_actor,authorization_snapshot is not null as has_snapshot from public.negotiation_policies where request_id=$1',[automatic.rows[0].id])).rows).toEqual([{auto_purchase:true,has_actor:true,has_snapshot:true}])
+    await expect(db.query('update public.negotiation_policies set maximum_total_cents=999999 where request_id=$1',[automatic.rows[0].id])).rejects.toThrow()
 
     await db.exec('reset role;')
     const userC='33333333-3333-4333-8333-333333333333'
@@ -63,9 +69,15 @@ test('organisation membership isolates procurement data and protected evidence',
     await db.exec(`set role authenticated; set request.jwt.claim.sub='${userA}';`)
     await expect(db.query("update public.procurement_requests set status='Approved' returning id")).rejects.toThrow()
     await db.exec('reset role;')
-    const requestId=(await db.query<{id:string}>('select id from public.procurement_requests where organization_id=$1 limit 1',[userA])).rows[0].id
+    const requestId=createdRequestId
     const supplierId=(await db.query<{id:string}>('select id from public.suppliers where organization_id=$1 limit 1',[userA])).rows[0].id
-    await db.query('insert into public.supplier_call_queue(organization_id,request_id,supplier_id,created_by) values ($1,$2,$3,$1)',[userA,requestId,supplierId])
+    await db.query('update public.suppliers set authorised=true,authorised_at=now() where id=$1',[supplierId])
+    await db.query('insert into public.supplier_verifications(supplier_id,organization_id,active,legal_name,name_matched,contact_confirmed,checked_at) values ($1,$2,true,$3,true,true,now())',[supplierId,userA,'Example'])
+    const quote=(await db.query<{id:string}>('insert into public.supplier_quotes(organization_id,request_id,supplier_id,total_cents,quantity,payment_days,deposit_bps,terms_confirmed,details,needs_review) values ($1,$2,$3,30000,30,14,0,true,$4,false) returning id',[userA,requestId,supplierId,{available:true,specificationConfirmed:true,isSubstitution:false,deliveryTime:'2026-09-14T07:00:00+10:00',certifications:[]}])).rows[0]
+    const automaticQuote=(await db.query<{id:string}>('insert into public.supplier_quotes(organization_id,request_id,supplier_id,total_cents,quantity,payment_days,deposit_bps,terms_confirmed,details,needs_review) values ($1,$2,$3,30000,30,14,0,true,$4,false) returning id',[userA,automatic.rows[0].id,supplierId,{available:true,specificationConfirmed:true,isSubstitution:true,deliveryTime:'2026-09-14T07:00:00+10:00',certifications:[]}])).rows[0]
+    const queueItem=(await db.query<{id:string}>('insert into public.supplier_call_queue(organization_id,request_id,supplier_id,created_by) values ($1,$2,$3,$1) returning id',[userA,requestId,supplierId])).rows[0]
+    await db.query('insert into public.supplier_calls(organization_id,request_id,supplier_id,queue_item_id) values ($1,$2,$3,$4),($1,$2,$3,$4)',[userA,requestId,supplierId,queueItem.id])
+    expect((await db.query('select id from public.supplier_calls where queue_item_id=$1',[queueItem.id])).rows).toHaveLength(2)
     await db.exec('set role service_role;')
     const worker='44444444-4444-4444-8444-444444444444'
     const claimed=await db.query<{status:string;attempt_count:number}>('select status,attempt_count from public.claim_next_supplier_call($1,$2,$3,120)',[userA,requestId,worker])
@@ -74,8 +86,16 @@ test('organisation membership isolates procurement data and protected evidence',
     await db.query("update public.supplier_call_queue set status='calling',lease_expires_at=now()-interval '1 second' where request_id=$1",[requestId])
     expect((await db.query('select id from public.claim_next_supplier_call($1,$2,$3,120)',[userA,requestId,worker])).rows).toHaveLength(0)
     expect((await db.query<{status:string}>('select status from public.supplier_call_queue where request_id=$1',[requestId])).rows).toEqual([{status:'uncertain'}])
+    const orderId='55555555-5555-4555-8555-555555555555'
+    const firstOrder=await db.query<{id:string;created:boolean}>('select id,created from public.claim_purchase_order($1,$2,$3,$4,$5,$6,$7)',[userA,quote.id,orderId,'SP-TEST-1',{source:'test'},userA,'explicit'])
+    expect(firstOrder.rows).toEqual([{id:orderId,created:true}])
+    expect((await db.query<{id:string;created:boolean}>('select id,created from public.claim_purchase_order($1,$2,$3,$4,$5,$6,$7)',[userA,quote.id,'66666666-6666-4666-8666-666666666666','SP-TEST-2',{source:'retry'},userA,'explicit'])).rows).toEqual([{id:orderId,created:false}])
+    await expect(db.query('select id from public.claim_purchase_order($1,$2,$3,$4,$5,$6,$7)',[userA,automaticQuote.id,'77777777-7777-4777-8777-777777777777','SP-AUTO-BLOCKED',{source:'auto'},userA,'preauthorized'])).rejects.toThrow('Substitution')
+    await db.query("update public.supplier_quotes set details=jsonb_set(details,'{isSubstitution}','false') where id=$1",[automaticQuote.id])
+    expect((await db.query<{created:boolean}>('select created from public.claim_purchase_order($1,$2,$3,$4,$5,$6,$7)',[userA,automaticQuote.id,'77777777-7777-4777-8777-777777777777','SP-AUTO-1',{source:'auto'},userA,'preauthorized'])).rows).toEqual([{created:true}])
     await db.exec('reset role; set role anon;')
     await expect(db.query('select * from public.suppliers')).rejects.toThrow()
     await expect(db.query('select * from public.supplier_call_queue')).rejects.toThrow()
+    await expect(db.query('select * from public.claim_purchase_order($1,$2,$3,$4,$5,$6,$7)',[userA,quote.id,'88888888-8888-4888-8888-888888888888','SP-DENIED',{source:'denied'},userA,'explicit'])).rejects.toThrow()
   }finally{await db.close()}
 },30000)

@@ -4,7 +4,7 @@ import { calculateQuote, formatCents } from '../src/features/negotiation/calcula
 import { assessConversation } from '../src/features/negotiation/signals'
 import { defaultNegotiationPolicy, evaluateNegotiation } from '../src/features/negotiation/policy'
 import { checkContactPolicy, normalizeAustralianPhone, outboundTrustPrompt, trustedProductIntroduction } from '../src/features/voice/trustPolicy'
-import { demoCandidates, discoveryProfiles, rankCandidates } from '../src/features/discovery/engine'
+import { demoCandidates, discoveryProfiles, rankCandidates, scoreDiscoveredEvidence } from '../src/features/discovery/engine'
 import { previewNormalize } from '../src/features/intake/schema'
 import { clarifyQuestions, applyResponse, confirmIntake } from '../src/features/intake/clarify'
 import { intakeClientTools } from '../src/features/intake/agentTools'
@@ -69,10 +69,15 @@ test('negotiation bounds counter then escalate and never override a stop',()=>{
  expect(evaluateNegotiation(defaultNegotiationPolicy,{...base,counteroffersMade:2}).action).toBe('escalate')
  expect(evaluateNegotiation(defaultNegotiationPolicy,{...base,supplierAskedToStop:true}).action).toBe('stop')
 })
-test('a qualifying quote still requires an explicit owner purchase action',()=>{
- const request={id:'REQ-1',item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-13T08:00',location:'Melbourne',status:'Needs approval' as const,category:'Food',purchaseMode:'preauthorised',minimumPaymentDays:14,maximumDepositPercent:0}
+test('a qualifying quote can use request-scoped pre-authorisation',()=>{
+ const request={id:'REQ-1',item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-13T08:00',location:'Melbourne',status:'Needs approval' as const,category:'Food',purchaseMode:'preauthorized' as const,minimumPaymentDays:14,maximumDepositPercent:0}
  const offer={id:'Q-1',name:'Supplier',initials:'S',quantity:30,price:315,delivery:'2026-09-13T07:00',onTime:true,exact:true,minutes:'1m',paymentDays:14,depositPercent:0,fees:0,originalPaymentDays:0,onTimeDeliveries:10,completedOrders:10,authorised:true,abnVerified:true,termsConfirmed:true}
- expect(canPurchase(offer,request)).toBe(false)
+ expect(canPurchase(offer,request)).toBe(true)
+ expect(canPurchase({...offer,exact:false},request)).toBe(false)
+})
+test('live discovery profile score changes with request priorities',()=>{
+ const evidence={semanticScore:.82,confidence:.9,locality:'Sydney NSW',location:'Melbourne VIC',products:['commercial chicken']}
+ expect(scoreDiscoveredEvidence(evidence,discoveryProfiles[1])).not.toBe(scoreDiscoveredEvidence(evidence,discoveryProfiles[2]))
 })
 test('contact policy blocks unverified, repeated and out-of-hours calls',()=>{
  const result=checkContactPolicy({abnVerified:false,authorised:true,optedOut:false,localHour:18,attemptsToday:2,businessName:'Cafe',callbackNumber:'03 9000 0000'})

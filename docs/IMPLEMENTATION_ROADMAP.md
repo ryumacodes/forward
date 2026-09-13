@@ -29,8 +29,8 @@ SourcePilot is positioned as an emergency and everyday procurement agent for own
   - Authorised suppliers can be queued in priority order; an atomic lease-based claim permits one active call per request, provider failures retry safely, missing completion webhooks become reviewable, and verified webhook completion advances the next supplier.
 - [x] Email, SMS, approvals, and purchasing
   - Send written briefs and approval requests through audited channels.
-  - Never place a purchase outside explicit owner authority.
-  - Resend supplier briefs and purchase orders use an audited idempotent outbox; Twilio owner-approval SMS is single-attempt and links back to the app. A purchase order requires a second explicit owner click and a fresh server-side recheck of ABR, authorisation, opt-out, quote completeness, budget, quantity, delivery, payment, deposit, and substitution rules. No automatic payment exists.
+  - Never place a purchase outside explicit owner/admin authority or a stored request-scoped pre-authorisation.
+  - Resend supplier briefs and purchase orders use an audited idempotent outbox; Twilio owner-approval SMS is single-attempt and links back to the app. Purchase orders are atomically reserved after a fresh server-side recheck of ABR, authorisation, opt-out, quote completeness, budget, quantity, delivery, payment, deposit, certification, and substitution rules. Pre-authorised requests can issue one PO automatically when every rule passes. No automatic payment exists.
 - [ ] Production deployment and evaluation
   - Publish a stable URL, rehearse the live demo path, and document costs and operational limitations.
   - Measure extraction accuracy, missing-field recall, supplier eligibility decisions, ranking consistency, and negotiation-policy violations.

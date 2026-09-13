@@ -50,7 +50,7 @@ export default function App() {
   const nav = (next: Page) => { setPage(next); setQuery(''); setMobileDetail(false); setAccountMenu(false); window.scrollTo({top:0}) }
   const notify = (message: string) => setNotice(message)
   const showWorkspaceGuide = () => {
-    notify(supabase?'Create a request, authorise an ABN-verified supplier, compare evidence-backed quotes, then explicitly approve any purchase order.':'Create a request and explore the clearly labelled sample workflow. Configure Supabase to connect live services.')
+    notify(supabase?'Create a request, choose its buying rules, authorise an ABN-verified supplier, then compare evidence-backed quotes. A PO can only be automatic when that request was explicitly pre-authorised.':'Create a request and explore the clearly labelled sample workflow. Configure Supabase to connect live services.')
     setAccountMenu(false)
   }
   const signOut = async () => {
@@ -89,6 +89,9 @@ export default function App() {
       .on('postgres_changes',{event:'*',schema:'public',table:'supplier_call_queue',filter:`organization_id=eq.${organization.id}`},refresh)
       .on('postgres_changes',{event:'*',schema:'public',table:'supplier_calls',filter:`organization_id=eq.${organization.id}`},refresh)
       .on('postgres_changes',{event:'*',schema:'public',table:'supplier_quotes',filter:`organization_id=eq.${organization.id}`},refresh)
+      .on('postgres_changes',{event:'*',schema:'public',table:'suppliers',filter:`organization_id=eq.${organization.id}`},refresh)
+      .on('postgres_changes',{event:'*',schema:'public',table:'supplier_verifications',filter:`organization_id=eq.${organization.id}`},refresh)
+      .on('postgres_changes',{event:'*',schema:'public',table:'purchase_orders',filter:`organization_id=eq.${organization.id}`},refresh)
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'procurement_requests',filter:`organization_id=eq.${organization.id}`},refresh)
       .subscribe()
     return()=>{window.clearTimeout(timer);void client.removeChannel(channel)}
