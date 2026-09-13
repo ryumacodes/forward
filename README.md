@@ -1,18 +1,22 @@
-# Backfill
+# SourcePilot
 
-Backfill is a mobile-first voice procurement agent for Australian small businesses. An owner describes what they need, when they need it, and their budget. Backfill checks authorised, ABN-verified suppliers, calls them for quotes, compares the results, negotiates within approved limits, and presents the best option for purchase or confirmation.
+SourcePilot is a mobile-first voice procurement agent for Australian small businesses. Its AI assistant, Sarah, checks authorised, ABN-verified suppliers, calls them for quotes, compares the results, negotiates within approved limits, and presents the best option for purchase or confirmation.
 
 ## How it works
 
 1. The owner speaks or types a procurement request.
-2. Backfill converts it into a structured brief with quantities, delivery timing, budget, and payment preferences.
+2. SourcePilot converts it into a structured brief with quantities, delivery timing, budget, and payment preferences.
 3. The supplier list is filtered to businesses with a confirmed ABN and owner authorisation.
 4. Suppliers are contacted by voice first, with SMS or email available for follow-up.
 5. Quotes are normalised and ranked by total cost, availability, delivery, payment terms, reliability, and call sentiment.
-6. Backfill negotiates within explicit price and payment-term limits.
-7. Every purchase order requires a separate, explicit owner approval. Backfill never commits or pays automatically.
+6. SourcePilot negotiates within explicit price and payment-term limits.
+7. Every purchase order requires a separate, explicit owner approval. SourcePilot never commits or pays automatically.
 
 The language model extracts details and prepares natural conversation. Deterministic application rules control supplier eligibility, negotiation limits, ranking, disclosure, and purchase approval.
+
+## Organisation workspaces
+
+Every account receives a personal organisation during signup, named from the user’s profile or email. Users can also create business organisations and switch between organisations they belong to. Procurement requests, suppliers, verification evidence, calls, quotes, policies, messages, decisions, and purchase orders are all scoped by `organization_id`; membership-based RLS prevents access from outside the organisation.
 
 ## Current features
 
@@ -23,7 +27,7 @@ The language model extracts details and prepares natural conversation. Determini
 - Melbourne supplier lead dataset for discovery testing
 - Live public-web supplier discovery with attributable evidence and semantic product matching
 - Live ABR verification and a separate owner-authorisation gate
-- Single-supplier ElevenLabs SIP outbound calls with pre-dispatch trust checks and per-call policy snapshots
+- Durable, sequential ElevenLabs SIP calling queues with batch selection, atomic claims, retries, cancellation, live status, pre-dispatch trust checks, and per-call policy snapshots
 - HMAC-verified post-call transcript ingestion and supplier-only structured quote extraction
 - Audited supplier email, owner approval SMS, and explicit owner-approved purchase orders
 - Quote comparison and supplier ranking
@@ -31,6 +35,7 @@ The language model extracts details and prepares natural conversation. Determini
 - Sentiment, patience, and negotiation-readiness signals
 - Fast deterministic negotiation calculations
 - Supabase schema, row-level security policies, and intake Edge Function
+- Personal and business organisation workspaces with membership-based isolation
 
 ## Tech stack
 
@@ -101,4 +106,4 @@ data/                  Researched supplier lead exports
 
 ## Prototype status
 
-The repository implements connected intake, ABR verification, evidence-backed web discovery, trust-gated ElevenLabs outbound calls, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, and explicit owner-approved purchase orders. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before Backfill can contact them.
+The repository implements connected intake, ABR verification, evidence-backed web discovery, trust-gated ElevenLabs outbound calls, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, and explicit owner-approved purchase orders. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by the business owner before SourcePilot can contact them.

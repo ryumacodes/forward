@@ -14,6 +14,7 @@ export type DiscoveredSupplier = {
   email: string | null
   confidence: number
   semanticScore: number
+  profileScore: number
   sources: DiscoverySource[]
   evidenceCheckedAt: string
   mode: 'live'

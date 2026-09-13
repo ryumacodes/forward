@@ -1,20 +1,18 @@
-import { type Offer, type Recovery, validateOffer } from './data'
+import { type Offer, type ProcurementRequest, validateOffer } from './data'
 export const paymentLabel = (days: number) => days === 0 ? 'Due on delivery' : `Net ${days} from invoice`
-export function paymentChecks(offer: Offer, request: Recovery) {
+export function paymentChecks(offer: Offer, request: ProcurementRequest) {
   return {
     'Payment period': offer.termsConfirmed && offer.paymentDays >= (request.minimumPaymentDays ?? 0),
     'Deposit limit': offer.termsConfirmed && offer.depositPercent <= (request.maximumDepositPercent ?? 0),
     'Total with fees': offer.price + offer.fees <= request.budget,
   }
 }
-export function canPurchase(offer: Offer, request: Recovery) {
+export function canPurchase(offer: Offer, request: ProcurementRequest) {
   void offer
   void request
-  // Automatic commitment is intentionally disabled. A qualifying quote still
-  // requires a separate, explicit owner action in the procurement endpoint.
   return false
 }
-export function rankOffers(offers: Offer[], request: Recovery) {
+export function rankOffers(offers: Offer[], request: ProcurementRequest) {
   return offers.map(offer => {
     const checks = {...validateOffer(offer, request), ...paymentChecks(offer, request)}
     const reasons = Object.entries(checks).filter(([,pass]) => !pass).map(([label]) => label)

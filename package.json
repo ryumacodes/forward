@@ -1,5 +1,5 @@
 {
-  "name": "backfill",
+  "name": "sourcepilot",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@elevenlabs/client": "^1.25.0",
+    "@remixicon/react": "^4.9.0",
     "@supabase/supabase-js": "2.116.0",
-    "lucide-react": "^0.468.0",
     "orb-ui": "^0.8.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"

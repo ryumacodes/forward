@@ -1,0 +1,44 @@
+/**
+ * SourcePilot's product icon set.
+ *
+ * Keep interface icons concrete and neutral: use line icons for actions and
+ * navigation, and reserve filled icons for selected or confirmed states.
+ */
+export {
+  RiPulseLine as Activity,
+  RiErrorWarningLine as AlertCircle,
+  RiAlertLine as AlertTriangle,
+  RiArrowLeftDownLine as ArrowDownLeft,
+  RiArrowLeftLine as ArrowLeft,
+  RiArrowRightLine as ArrowRight,
+  RiArrowRightUpLine as ArrowUpRight,
+  RiCheckLine as Check,
+  RiCheckDoubleLine as CheckCheck,
+  RiCheckboxCircleLine as CheckCircle2,
+  RiArrowDownSLine as ChevronDown,
+  RiArrowRightSLine as ChevronRight,
+  RiQuestionLine as CircleHelp,
+  RiTimeLine as Clock3,
+  RiExternalLinkLine as ExternalLink,
+  RiFileTextLine as FileText,
+  RiDashboardLine as LayoutDashboard,
+  RiLoader4Line as LoaderCircle,
+  RiLock2Line as LockKeyhole,
+  RiLogoutBoxRLine as LogOut,
+  RiMailLine as Mail,
+  RiMapPinLine as MapPin,
+  RiMessage2Line as MessageSquare,
+  RiMicLine as Mic,
+  RiMore2Line as MoreHorizontal,
+  RiBox3Line as Package,
+  RiPhoneLine as Phone,
+  RiPlaneFill as Plane,
+  RiAddLine as Plus,
+  RiResetLeftLine as RotateCcw,
+  RiSearchLine as Search,
+  RiShieldCheckLine as ShieldCheck,
+  RiShoppingCart2Line as ShoppingCart,
+  RiVerifiedBadgeLine as VerifiedBadge,
+  RiTeamLine as Users,
+  RiCloseLine as X,
+} from '@remixicon/react'

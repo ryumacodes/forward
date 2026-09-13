@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, MapPin, Search, ShieldCheck } from 'lucide-react'
+import { ExternalLink, MapPin, Search, ShieldCheck } from '../icons'
 import { supplierLeads } from '../data/supplierLeads'
 
 export function SupplierLeadList() {
