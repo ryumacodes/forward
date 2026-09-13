@@ -137,7 +137,8 @@ form input:focus,form select:focus,.brief-label textarea:focus,.tool-card input:
 .call-row { padding-inline: 4px; }.call-row:hover { background: #f5f8ff; }.call-icon { background: #eaf1ff; color: var(--blue-700); }
 
 /* Dialogs and voice form */
-dialog.voice-dialog,dialog.transcript-panel,dialog:not(.transcript-panel) { border-color: #d6e0ee; border-radius: 19px; box-shadow: 0 32px 100px #0413343d; }
+dialog.voice-dialog,dialog.request-wizard { border-color: #d6e0ee; border-radius: 19px; box-shadow: 0 32px 100px #0413343d; }
+dialog.transcript-panel,dialog.request-drawer { border-color: #d6e0ee; border-radius: 19px 0 0 19px; box-shadow: 0 32px 100px #0413343d; }
 dialog::backdrop,.transcript-panel::backdrop { background: #041334a6; backdrop-filter: blur(8px); }
 .modal-head { padding-bottom: 17px; border-bottom: 1px solid #e2e8f1; }.modal-head h2 { color: var(--ink-900); font-weight: 680; letter-spacing: -1px; }
 .icon-button { border-radius: 9px; color: #597196; }.icon-button:hover { background: #edf3ff; }
@@ -170,7 +171,7 @@ dialog::backdrop,.transcript-panel::backdrop { background: #041334a6; backdrop-f
   .dashboard-orb .cloud-orb { width: 88px; height: 88px; transform: scale(.66); transform-origin: top left; }
   .voice-entry > .primary { color: #12356c; }.metric { border-radius: 12px; }.metrics { margin-top: 12px; }
   .request-item,.request-item.selected,.detail,.request-inspector { border-radius: 12px; }.request-layout { box-shadow: none; }
-  dialog.voice-dialog,dialog.transcript-panel { border-radius: 0; }.modal-head { background: #fff; }
+  dialog.voice-dialog,dialog.transcript-panel,dialog.request-drawer { border-radius: 0; }.modal-head { background: #fff; }
   .supplier-import,.negotiation-tools,.policy-panel,.supplier-leads,.supplier-card,.activity-page { padding: 18px; border-radius: 12px; }
 }
 
