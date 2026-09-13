@@ -13,12 +13,12 @@ const procurementCloud: OrbTheme = {
   },
 }
 
-export function VoiceOrb({ listening = false, signal }: { listening?: boolean; signal?: OrbSignal }) {
+export function VoiceOrb({ listening = false, signal, size = 156 }: { listening?: boolean; signal?: OrbSignal; size?: number }) {
   return (
     <span className="cloud-orb" aria-hidden="true">
       <Orb
         theme={procurementCloud}
-        size={156}
+        size={size}
         signal={signal ?? { state: listening ? 'listening' : 'idle' }}
         interactive={false}
       />

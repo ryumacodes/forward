@@ -52,7 +52,7 @@ button, input, textarea, select { touch-action: manipulation; }
   .section-title h2 { font-size: 18px; }
   .search { width: 100%; min-height: 46px; }
   .search input { width: 100%; font-size: 16px; }
-  .recovery-layout { display: block; min-height: 0; background: none; border: 0; overflow: visible; }
+  .request-layout { display: block; min-height: 0; background: none; border: 0; overflow: visible; }
   .request-list { display: grid; gap: 12px; padding: 0; border: 0; background: none; overflow: visible; }
   .request-item,.request-item.selected { min-width: 0; width: 100%; padding: 17px; margin: 0; background: #fff; border: 1px solid #dfe7f4; border-radius: 10px; }
   .request-meta { font-size: 12px; margin-bottom: 8px; }

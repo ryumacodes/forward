@@ -15,7 +15,7 @@ export async function verifyElevenLabsSignature(rawBody:string,header:string|nul
 }
 
 export function transcriptText(turns:TranscriptTurn[]){
-  return turns.filter(turn=>['agent','user'].includes(turn.role)&&typeof turn.message==='string').map(turn=>`${turn.role==='user'?'SUPPLIER':'BACKFILL'}: ${turn.message.trim()}`).join('\n')
+  return turns.filter(turn=>['agent','user'].includes(turn.role)&&typeof turn.message==='string').map(turn=>`${turn.role==='user'?'SUPPLIER':'SOURCEPILOT'}: ${turn.message.trim()}`).join('\n')
 }
 
 export function supplierTranscript(turns:TranscriptTurn[]){return turns.filter(turn=>turn.role==='user').map(turn=>turn.message).join('\n')}

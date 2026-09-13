@@ -12,9 +12,9 @@ import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
 import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
 import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature } from '../src/features/voice/webhook'
-import { canPurchase } from '../src/features/recoveries/ranking'
+import { canPurchase } from '../src/features/requests/ranking'
 import { checkSupplies, allSupplyLeads } from '../src/features/supplycheck/engine'
-import { createDemoSeed } from '../src/features/recoveries/data'
+import { createDemoSeed } from '../src/features/requests/data'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -70,7 +70,7 @@ test('negotiation bounds counter then escalate and never override a stop',()=>{
  expect(evaluateNegotiation(defaultNegotiationPolicy,{...base,supplierAskedToStop:true}).action).toBe('stop')
 })
 test('a qualifying quote still requires an explicit owner purchase action',()=>{
- const request={id:'REC-1',item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-13T08:00',location:'Melbourne',status:'Needs approval' as const,category:'Food',purchaseMode:'preauthorised',minimumPaymentDays:14,maximumDepositPercent:0}
+ const request={id:'REQ-1',item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-13T08:00',location:'Melbourne',status:'Needs approval' as const,category:'Food',purchaseMode:'preauthorised',minimumPaymentDays:14,maximumDepositPercent:0}
  const offer={id:'Q-1',name:'Supplier',initials:'S',quantity:30,price:315,delivery:'2026-09-13T07:00',onTime:true,exact:true,minutes:'1m',paymentDays:14,depositPercent:0,fees:0,originalPaymentDays:0,onTimeDeliveries:10,completedOrders:10,authorised:true,abnVerified:true,termsConfirmed:true}
  expect(canPurchase(offer,request)).toBe(false)
 })
@@ -84,6 +84,7 @@ test('outbound call context uses Australian caller identity and supplier-trust l
  expect(normalizeAustralianPhone('+61 412 345 678')).toBe('+61412345678')
  expect(()=>normalizeAustralianPhone('+1 555 123 4567')).toThrow('Australian')
  const opening=trustedProductIntroduction({businessName:'Flinders Kitchen',callbackNumber:'03 9000 0000',product:'chicken breast',quantity:30,unit:'kg',contactSource:'the owner supplier record'})
+ expect(opening).toContain('Sarah')
  expect(opening).toContain('AI procurement assistant')
  expect(opening).toContain('chicken breast')
  expect(opening).toContain('convenient time')
@@ -116,11 +117,11 @@ test('intake preview keeps delivery clauses out of the product name',()=>{
  expect(result.deliveryLocation).toBe('24 Flinders Lane Melbourne')
  expect(result.deadline).toBe('2026-09-14T08:00')
 })
-test('demo recovery deadlines and supplier deliveries stay relative to one clock',()=>{
+test('demo request deadlines and supplier deliveries stay relative to one clock',()=>{
  const seed=createDemoSeed(new Date(2026,8,13,10))
- expect(seed.recoveries[0].deadline).toBe('2026-09-14T08:00')
- expect(seed.recoveries[1].deadline).toBe('2026-09-15T09:00')
- expect(seed.recoveries[2].deadline).toBe('2026-09-12T16:00')
+ expect(seed.requests[0].deadline).toBe('2026-09-14T08:00')
+ expect(seed.requests[1].deadline).toBe('2026-09-15T09:00')
+ expect(seed.requests[2].deadline).toBe('2026-09-12T16:00')
  expect(seed.offers[0].delivery).toContain('14')
  expect(seed.offers[0].delivery).toContain('7:00 am')
  expect(seed.offers[2].delivery).toContain('15')
@@ -180,7 +181,7 @@ test('scraped supplier leads have valid active-ABN evidence and remain unauthori
  }
 })
 test('ABR JSONP becomes conservative, attributable verification evidence',()=>{
- const record=parseAbrJsonp('backfill({"Abn":"51824753556","AbnStatus":"Active","EntityName":"Example Foods Pty Ltd","BusinessName":["Example Foods"],"Gst":"2000-07-01","AddressState":"VIC","AddressPostcode":"3000","Message":""})')
+ const record=parseAbrJsonp('sourcepilot({"Abn":"51824753556","AbnStatus":"Active","EntityName":"Example Foods Pty Ltd","BusinessName":["Example Foods"],"Gst":"2000-07-01","AddressState":"VIC","AddressPostcode":"3000","Message":""})')
  const result=toAbrVerification(record,'Example Foods','2026-09-12T09:00:00.000Z')
  expect(result.active).toBe(true)
  expect(result.nameMatched).toBe(true)

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileText, Mail, MessageSquare, Mic } from 'lucide-react'
+import { FileText, Mail, MessageSquare, Mic } from '../icons'
 import { previewNormalize, type IntakeSource } from '../features/intake/schema'
 
 const sourceLabels: Record<IntakeSource,string> = {voice_call:'Voice call',voice_note:'Voice note',email:'Email',sms:'SMS',form:'Web form'}

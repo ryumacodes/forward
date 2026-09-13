@@ -1,12 +1,12 @@
-# Backfill implementation roadmap
+# SourcePilot implementation roadmap
 
-Backfill is positioned as an emergency and everyday procurement agent for owner-operated businesses that do not have a procurement team. Every workflow must preserve owner control, supplier trust, evidence, and deterministic financial guardrails.
+SourcePilot is positioned as an emergency and everyday procurement agent for owner-operated businesses that do not have a procurement team. Every workflow must preserve owner control, supplier trust, evidence, and deterministic financial guardrails.
 
 ## Build order
 
 - [x] Structured owner intake
   - Voice, typed requests, email, SMS, and forms normalize into one schema.
-  - The owner reviews extracted values, missing fields, confidence, and source evidence before creating a recovery.
+  - The owner reviews extracted values, missing fields, confidence, and source evidence before creating a procurement request.
   - A local deterministic fallback keeps the demo usable without credentials.
   - The live path is implemented and requires the Supabase function and OpenAI secret to be deployed in the target environment.
 - [x] Live ABR verification
@@ -25,6 +25,8 @@ Backfill is positioned as an emergency and everyday procurement agent for owner-
   - Persist provider events and normalize real transcripts into comparable supplier quotes.
   - Remove static quotes from the connected workspace.
   - HMAC-verified, idempotent post-call ingestion now stores provider transcripts, applies supplier opt-outs, extracts only supplier-stated quote facts with evidence, reconciles totals in code, flags incomplete terms, and feeds connected-workspace rankings.
+- [x] Durable supplier calling queue
+  - Authorised suppliers can be queued in priority order; an atomic lease-based claim permits one active call per request, provider failures retry safely, missing completion webhooks become reviewable, and verified webhook completion advances the next supplier.
 - [x] Email, SMS, approvals, and purchasing
   - Send written briefs and approval requests through audited channels.
   - Never place a purchase outside explicit owner authority.

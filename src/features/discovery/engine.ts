@@ -85,6 +85,18 @@ export function rankCandidates(candidates: SupplierCandidate[], profile: Discove
   return candidates.map(candidate => evaluateCandidate(candidate, profile, now)).sort((a,b) => Number(b.eligible) - Number(a.eligible) || b.score - a.score || a.candidate.name.localeCompare(b.candidate.name))
 }
 
+export function scoreDiscoveredEvidence(input:{semanticScore:number;confidence:number;locality:string;location:string;products:string[];requiresHalal?:boolean},profile:DiscoveryProfile) {
+  const productMatch=Math.max(0,Math.min(100,input.semanticScore*100))
+  const locationTokens=input.location.toLowerCase().split(/[^a-z0-9]+/).filter(token=>token.length>2)
+  const localityText=input.locality.toLowerCase()
+  const locality=locationTokens.some(token=>localityText.includes(token))?100:Math.round(input.confidence*55)
+  const productText=input.products.join(' ').toLowerCase()
+  const certifications=input.requiresHalal ? (/halal/.test(productText)?100:0) : Math.round(input.confidence*70)
+  const known:[DiscoveryFactor,number][]=[['productMatch',productMatch],['locality',locality],['certifications',certifications],['reliability',input.confidence*100]]
+  const weight=known.reduce((sum,[factor])=>sum+profile.weights[factor],0)
+  return Math.round(known.reduce((sum,[factor,value])=>sum+profile.weights[factor]*value,0)/weight)
+}
+
 export const demoCandidates: SupplierCandidate[] = [
   {id:'southbank',name:'Southbank Produce Co',abnActive:true,abnCheckedAt:new Date().toISOString(),authorised:true,optedOut:false,productMatch:94,deliveryFit:92,landedCost:78,reliability:91,locality:96,paymentTerms:70,certifications:88,requiredCertificationsMet:true,sourceConfidence:.94,evidenceUrls:['supplier-page']},
   {id:'metro',name:'Metro Trade Supply',abnActive:true,abnCheckedAt:new Date().toISOString(),authorised:true,optedOut:false,productMatch:90,deliveryFit:70,landedCost:91,reliability:82,locality:72,paymentTerms:92,certifications:80,requiredCertificationsMet:true,sourceConfidence:.87,evidenceUrls:['catalogue']},

@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test'
-import { initialRecoveries, offers } from '../src/features/recoveries/data'
-import { rankOffers, canPurchase, paymentChecks } from '../src/features/recoveries/ranking'
-const request = initialRecoveries[0]
+import { initialRequests, offers } from '../src/features/requests/data'
+import { rankOffers, canPurchase, paymentChecks } from '../src/features/requests/ranking'
+const request = initialRequests[0]
 test('late and partial offers cannot outrank a qualifying offer', () => {
   const ranked = rankOffers(offers, request)
   expect(ranked[0].offer.id).toBe('victorian')

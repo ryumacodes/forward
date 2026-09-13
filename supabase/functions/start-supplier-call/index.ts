@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
-import { checkContactPolicy, normalizeAustralianPhone, outboundTrustPrompt, trustedProductIntroduction } from '../../../src/features/voice/trustPolicy.ts'
+import { dispatchNextSupplierCall } from '../_shared/call-queue.ts'
 
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'}
 
@@ -14,50 +14,44 @@ Deno.serve(async request=>{
     const userClient=createClient(supabaseUrl,anonKey,{global:{headers:{Authorization:authorization}}})
     const {data:{user},error:userError}=await userClient.auth.getUser()
     if(userError||!user)return json({error:'Authentication is invalid.'},401)
-    const {supplierId,requestId}=await request.json() as {supplierId:string;requestId:string}
-    if(!supplierId||!requestId)return json({error:'Select a supplier and recovery.'},400)
+    const body=await request.json() as {supplierId?:string;supplierIds?:string[];requestId?:string;action?:'enqueue'|'cancel'|'retry';queueItemId?:string}
     const serviceClient=createClient(supabaseUrl,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}})
-    const [{data:supplier},{data:recovery},{data:verification},{data:negotiationPolicy}]=await Promise.all([
-      serviceClient.from('supplier_imports').select('id,owner_id,name,abn,phone,authorised,contact_source,time_zone,do_not_contact').eq('id',supplierId).eq('owner_id',user.id).single(),
-      serviceClient.from('recovery_requests').select('id,owner_id,details,status').eq('id',requestId).eq('owner_id',user.id).single(),
-      serviceClient.from('supplier_verifications').select('active,name_matched,contact_confirmed,checked_at').eq('supplier_id',supplierId).eq('owner_id',user.id).single(),
-      serviceClient.from('negotiation_policies').select('maximum_total_cents,minimum_payment_days,maximum_deposit_bps,maximum_counteroffers,allow_substitutions,allow_anonymous_market_anchor,auto_purchase').eq('request_id',requestId).eq('owner_id',user.id).single(),
+
+    if(body.action==='cancel'||body.action==='retry'){
+      if(!body.queueItemId)return json({error:'Select a queue item.'},400)
+      const {data:item}=await userClient.from('supplier_call_queue').select('id,organization_id,request_id,status,attempt_count,max_attempts').eq('id',body.queueItemId).single()
+      if(!item)return json({error:'Queue item was not found in this organisation.'},404)
+      const now=new Date().toISOString()
+      if(body.action==='cancel'){
+        if(item.status!=='queued')return json({error:'Only queued calls can be cancelled. A call that is already starting must finish or be stopped with the provider.'},409)
+        await serviceClient.from('supplier_call_queue').update({status:'cancelled',completed_at:now,lease_expires_at:null,worker_id:null,updated_at:now,last_error:'Cancelled by an organisation member'}).eq('id',item.id).eq('status','queued')
+        return json({status:'cancelled',queueItemId:item.id})
+      }
+      if(!['blocked','failed','uncertain'].includes(item.status))return json({error:'Only blocked or failed queue items can be retried.'},409)
+      await serviceClient.from('supplier_call_queue').update({status:'queued',attempt_count:Math.min(Number(item.attempt_count),Number(item.max_attempts)-1),available_at:now,claimed_at:null,lease_expires_at:null,worker_id:null,completed_at:null,last_error:null,updated_at:now}).eq('id',item.id)
+      await serviceClient.from('procurement_requests').update({status:'Calling suppliers'}).eq('id',item.request_id).eq('organization_id',item.organization_id).neq('status','Approved')
+      const activeCall=await dispatchNextSupplierCall(serviceClient,item.organization_id,item.request_id)
+      return json({status:activeCall?'calling':'queued',queueItemId:item.id,activeCall})
+    }
+
+    const requestId=body.requestId?.trim(),supplierIds=[...new Set([...(body.supplierIds||[]),...(body.supplierId?[body.supplierId]:[])].filter(Boolean))].slice(0,20)
+    if(!requestId||!supplierIds.length)return json({error:'Select a procurement request and at least one supplier.'},400)
+    const [{data:procurementRequest},{data:suppliers}]=await Promise.all([
+      userClient.from('procurement_requests').select('id,organization_id,status').eq('id',requestId).single(),
+      userClient.from('suppliers').select('id,organization_id').in('id',supplierIds),
     ])
-    if(!supplier||!recovery)return json({error:'Supplier or recovery was not found in this owner workspace.'},404)
-    const details=recovery.details as Record<string,unknown>
-    const businessName=(Deno.env.get('CALLING_BUSINESS_NAME')||'').trim(),callbackNumber=(Deno.env.get('ELEVENLABS_CALLBACK_NUMBER')||'').trim()
-    const verified=Boolean(verification?.active&&verification?.name_matched&&verification?.contact_confirmed&&fresh(verification.checked_at))
-    const since=new Date(Date.now()-86_400_000).toISOString()
-    const {count}=await serviceClient.from('supplier_calls').select('id',{count:'exact',head:true}).eq('owner_id',user.id).eq('supplier_id',supplier.id).gte('created_at',since).neq('status','failed')
-    const localHour=Number(new Intl.DateTimeFormat('en-AU',{timeZone:supplier.time_zone,hour:'2-digit',hourCycle:'h23'}).format(new Date()))
-    const contact=checkContactPolicy({abnVerified:verified,authorised:supplier.authorised,optedOut:supplier.do_not_contact,localHour,attemptsToday:count||0,callbackNumber,businessName})
-    const snapshot=policySnapshot(details,negotiationPolicy,contact,supplier.time_zone)
-    if(!contact.allowed){await recordDecision(serviceClient,user.id,request.id,supplier.id,'block',contact.blockers,snapshot);return json({error:`Call blocked: ${contact.blockers.join('; ')}.`,blockers:contact.blockers},409)}
-    const apiKey=Deno.env.get('ELEVENLABS_API_KEY'),agentId=Deno.env.get('ELEVENLABS_AGENT_ID'),phoneNumberId=Deno.env.get('ELEVENLABS_PHONE_NUMBER_ID')
-    if(!apiKey||!agentId||!phoneNumberId)throw new Error('ElevenLabs outbound telephony secrets are incomplete.')
-    const toNumber=normalizeAustralianPhone(supplier.phone)
-    normalizeAustralianPhone(callbackNumber)
-    const item=requiredText(details.item,'product'),product=[details.requiresHalal===true?'halal':details.requiresHalal===false?'no halal requirement':'',details.freshness,details.cut,item].filter(Boolean).join(' '),unit=requiredText(details.unit,'unit'),deliveryLocation=requiredText(details.location,'delivery location'),deadline=requiredText(details.deadline,'deadline')
-    const quantity=requiredNumber(details.quantity,'quantity')
-    const firstMessage=trustedProductIntroduction({businessName,callbackNumber,product,quantity,unit,contactSource:supplier.contact_source})
-    const prompt=outboundTrustPrompt({businessName,callbackNumber,product,quantity,unit,deliveryLocation,deadline,maximumTotalCents:snapshot.maximumTotalCents,minimumPaymentDays:snapshot.minimumPaymentDays,maximumDepositBps:snapshot.maximumDepositBps,maximumCounteroffers:snapshot.maximumCounteroffers,allowSubstitutions:snapshot.allowSubstitutions})
-    const {data:call,error:callError}=await serviceClient.from('supplier_calls').insert({owner_id:user.id,request_id:request.id,supplier_id:supplier.id,status:'queued',first_message:firstMessage,callback_number:callbackNumber,policy_snapshot:snapshot}).select('id').single()
-    if(callError)throw callError
-    const provider=await fetch('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call',{method:'POST',headers:{'xi-api-key':apiKey,'Content-Type':'application/json'},body:JSON.stringify({agent_id:agentId,agent_phone_number_id:phoneNumberId,to_number:toNumber,conversation_initiation_client_data:{dynamic_variables:{supplier_name:supplier.name,business_name:businessName,product,quantity,unit,delivery_location:deliveryLocation,deadline,callback_number:callbackNumber,maximum_total_aud:(snapshot.maximumTotalCents/100).toFixed(2),minimum_payment_days:snapshot.minimumPaymentDays,maximum_deposit_percent:snapshot.maximumDepositBps/100,maximum_counteroffers:snapshot.maximumCounteroffers},conversation_config_override:{agent:{first_message:firstMessage,prompt:{prompt}}}}}})})
-    const providerBody=await provider.json().catch(()=>({})) as {success?:boolean;message?:string;conversation_id?:string;sip_call_id?:string;detail?:unknown}
-    if(!provider.ok||!providerBody.success||!providerBody.conversation_id){const message=providerBody.message||`ElevenLabs returned ${provider.status}`;await serviceClient.from('supplier_calls').update({status:'failed',provider_error:message}).eq('id',call.id);return json({error:message},502)}
-    await serviceClient.from('supplier_calls').update({status:'initiated',provider_conversation_id:providerBody.conversation_id,cues:{sipCallId:providerBody.sip_call_id}}).eq('id',call.id)
-    await recordDecision(serviceClient,user.id,request.id,supplier.id,'allow',['Live ABR evidence, owner authorisation, opt-out, hours, identity, and attempt checks passed'],snapshot)
-    return json({callId:call.id,conversationId:providerBody.conversation_id,status:'initiated',firstMessage})
-  }catch(error){return json({error:error instanceof Error?error.message:'Unable to start supplier call.'},500)}
+    if(!procurementRequest)return json({error:'Procurement request was not found in this organisation.'},404)
+    if(procurementRequest.status==='Approved')return json({error:'This request is already complete.'},409)
+    const allowed=new Set((suppliers||[]).filter(item=>item.organization_id===procurementRequest.organization_id).map(item=>item.id))
+    if(allowed.size!==supplierIds.length)return json({error:'One or more suppliers were not found in this organisation.'},404)
+    const rows=supplierIds.map((supplierId,index)=>({organization_id:procurementRequest.organization_id,request_id:requestId,supplier_id:supplierId,priority:(index+1)*100,created_by:user.id}))
+    const {error:queueError}=await serviceClient.from('supplier_call_queue').upsert(rows,{onConflict:'organization_id,request_id,supplier_id',ignoreDuplicates:true})
+    if(queueError)throw queueError
+    await serviceClient.from('procurement_requests').update({status:'Calling suppliers'}).eq('id',requestId).eq('organization_id',procurementRequest.organization_id).eq('status','Ready to source')
+    const activeCall=await dispatchNextSupplierCall(serviceClient,procurementRequest.organization_id,requestId)
+    const {data:queue}=await userClient.from('supplier_call_queue').select('id,supplier_id,status,priority,attempt_count,max_attempts,available_at,call_id,last_error,created_at,updated_at').eq('request_id',requestId).order('priority').order('created_at')
+    return json({status:activeCall?'calling':'queued',queued:supplierIds.length,queue:queue||[],activeCall,...(activeCall||{})})
+  }catch(error){return json({error:error instanceof Error?error.message:'Unable to manage the supplier call queue.'},500)}
 })
 
-function policySnapshot(details:Record<string,unknown>,policy:Record<string,unknown>|null,contact:ReturnType<typeof checkContactPolicy>,timeZone:string){
-  return {maximumTotalCents:policy?Number(policy.maximum_total_cents):Math.round(requiredNumber(details.budget,'budget')*100),minimumPaymentDays:policy?Number(policy.minimum_payment_days):numberOr(details.minimumPaymentDays,14),maximumDepositBps:policy?Number(policy.maximum_deposit_bps):Math.round(numberOr(details.maximumDepositPercent,0)*100),maximumCounteroffers:policy?Number(policy.maximum_counteroffers):2,allowSubstitutions:policy?Boolean(policy.allow_substitutions):false,allowAnonymousMarketAnchor:policy?Boolean(policy.allow_anonymous_market_anchor):false,autoPurchase:false,firstCallTargetSeconds:120,contactPolicy:{...contact,timeZone,rollingAttemptWindowHours:24}}
-}
-function requiredText(value:unknown,label:string){if(typeof value!=='string'||!value.trim())throw new Error(`Recovery is missing ${label}.`);return value.trim()}
-function requiredNumber(value:unknown,label:string){const number=Number(value);if(!Number.isFinite(number)||number<=0)throw new Error(`Recovery has an invalid ${label}.`);return number}
-function numberOr(value:unknown,fallback:number){const number=Number(value);return Number.isFinite(number)&&number>=0?number:fallback}
-function fresh(value:string|undefined){const age=Date.now()-Date.parse(value||'');return Number.isFinite(age)&&age>=0&&age<=86_400_000}
-async function recordDecision(client:ReturnType<typeof createClient>,ownerId:string,requestId:string,supplierId:string,outcome:'allow'|'block',reasons:string[],snapshot:unknown){await client.from('agent_decisions').insert({owner_id:ownerId,request_id:requestId,supplier_id:supplierId,decision_type:'contact',outcome,reasons,policy_snapshot:snapshot})}
 function json(value:unknown,status=200){return new Response(JSON.stringify(value),{status,headers:{...cors,'Content-Type':'application/json'}})}
