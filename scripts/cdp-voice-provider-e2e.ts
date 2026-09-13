@@ -1,4 +1,4 @@
-export {}
+import { intakeClientTools } from '../src/features/intake/agentTools'
 
 const endpoint = process.env.CDP_ENDPOINT ?? 'http://127.0.0.1:9444'
 const agentId = process.env.VITE_ELEVENLABS_AGENT_ID?.trim()
@@ -83,15 +83,16 @@ try {
       let toolAudioChunks = 0;
       let userMessageSent = false;
       const toolCalls = [];
+      const agentResponses = [];
       const finishWhenComplete = () => {
         if (!followUpResponse || toolCalls.length === 0 || audioChunks <= toolAudioChunks) return;
         clearTimeout(timeout);
         socket.close();
-        resolve({connected: true, eventTypes: [...new Set(eventTypes)], initialResponse, followUpResponse, audioChunks, toolCalls});
+        resolve({connected: true, eventTypes: [...new Set(eventTypes)], initialResponse, followUpResponse, agentResponses, audioChunks, toolCalls});
       };
       const timeout = setTimeout(() => {
         socket.close();
-        reject(new Error('Voice provider timed out. Events: ' + eventTypes.join(', ')));
+        reject(new Error('Voice provider timed out. Events: ' + eventTypes.join(', ') + '; responses=' + JSON.stringify(agentResponses) + '; tools=' + JSON.stringify(toolCalls)));
       }, 45000);
       socket.onerror = () => {
         clearTimeout(timeout);
@@ -106,11 +107,12 @@ try {
         }
         if (event.type === 'agent_response') {
           const text = event.agent_response_event?.agent_response ?? '';
+          if (text) agentResponses.push(text);
           if (!initialResponse) initialResponse = text;
           else if (toolCalls.length > 0) followUpResponse = text;
           if (!userMessageSent) {
             userMessageSent = true;
-            socket.send(JSON.stringify({type: 'user_message', text: 'I need 30 kilograms of chicken.'}));
+            socket.send(JSON.stringify({type: 'user_message', text: 'I need a coupla boxes of chicken, mate. Shop around and compare the best price.'}));
           }
           finishWhenComplete();
         }
@@ -138,6 +140,7 @@ try {
     eventTypes: string[]
     initialResponse: string
     followUpResponse: string
+    agentResponses: string[]
     audioChunks: number
     toolCalls: Array<{name?: string; parameters?: Record<string, unknown>}>
   }} | undefined)?.value
@@ -145,7 +148,13 @@ try {
 
   console.log(JSON.stringify({...result, consoleErrors}, null, 2))
   if (!result.initialResponse.toLowerCase().includes('sarah')) throw new Error(`Unexpected first response: ${result.initialResponse}`)
-  if (!result.toolCalls.some(call => call.name === 'clarify_intake_details')) throw new Error(`The agent did not invoke clarify_intake_details: ${JSON.stringify(result.toolCalls)}`)
+  const clarification = result.toolCalls.find(call => call.name === 'clarify_intake_details')
+  if (!clarification) throw new Error(`The agent did not invoke clarify_intake_details: ${JSON.stringify(result.toolCalls)}`)
+  const normalized = JSON.parse(intakeClientTools.clarify_intake_details(clarification.parameters))
+  if (normalized.intake?.quantity !== 2 || normalized.intake?.unit !== 'boxes') throw new Error(`The client tool did not recover “a coupla boxes”: ${JSON.stringify(normalized)}`)
+  if (normalized.askNext?.field !== 'halal') throw new Error(`The client tool did not select the next missing requirement: ${JSON.stringify(normalized)}`)
+  if (typeof clarification.parameters?.requestText !== 'string' || !clarification.parameters.requestText.includes('coupla boxes')) throw new Error(`The agent omitted the verbatim request: ${JSON.stringify(clarification.parameters)}`)
+  if (clarification.parameters?.sourcingMode !== 'compare') throw new Error(`The agent did not select comparison mode: ${JSON.stringify(clarification.parameters)}`)
   if (!/halal|certification/i.test(result.followUpResponse)) throw new Error(`The agent did not ask the expected follow-up: ${result.followUpResponse}`)
   if (consoleErrors.length) throw new Error(`CDP console errors:\n${consoleErrors.join('\n')}`)
 } finally {

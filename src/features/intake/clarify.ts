@@ -1,5 +1,6 @@
-import type { Freshness, NormalizedIntake } from './schema'
+import type { NormalizedIntake } from './schema'
 import { normalizeDeadline } from './schema'
+import { correctionTail, parseDepositBps, parseFreshness, parseHalalRequirement, parseMoneyCents, parsePaymentDays, parseQuantity } from './speech'
 
 export type ClarifyQuestion = {
   field: string
@@ -17,19 +18,19 @@ export function missingFieldsOf(intake: Pick<NormalizedIntake,'item'|'quantity'|
   const meat = isMeatItem(intake.item)
   const missing: string[] = []
   if (!intake.item) missing.push('item')
-  if (intake.quantity == null || !intake.unit) missing.push('quantity')
-  if (intake.budgetCents == null) missing.push('budget')
+  if (intake.quantity == null || !Number.isFinite(intake.quantity) || intake.quantity <= 0 || !intake.unit) missing.push('quantity')
+  if (intake.budgetCents == null || !Number.isFinite(intake.budgetCents) || intake.budgetCents <= 0) missing.push('budget')
   if (!intake.deadline) missing.push('deadline')
   if (!intake.deliveryLocation) missing.push('deliveryLocation')
-  if (intake.paymentDays == null) missing.push('payment')
-  if (intake.depositBps == null) missing.push('deposit')
+  if (intake.paymentDays == null || !Number.isFinite(intake.paymentDays) || intake.paymentDays < 0 || intake.paymentDays > 365) missing.push('payment')
+  if (intake.depositBps == null || !Number.isFinite(intake.depositBps) || intake.depositBps < 0 || intake.depositBps > 10_000) missing.push('deposit')
   if (meat && intake.halal == null) missing.push('halal')
   if (meat && !intake.cut) missing.push('cut')
   if (meat && intake.freshness == null) missing.push('freshness')
   return missing
 }
 
-export function clarifyQuestions(intake: NormalizedIntake | Partial<NormalizedIntake>, limits = {haltAfter: 3}) {
+export function clarifyQuestions(intake: NormalizedIntake | Partial<NormalizedIntake>, limits = {haltAfter: 10}) {
   const questions: ClarifyQuestion[] = []
   const item = intake.item ?? null
   const meat = isMeatItem(item)
@@ -39,10 +40,10 @@ export function clarifyQuestions(intake: NormalizedIntake | Partial<NormalizedIn
   if (meat && intake.halal == null) { elicit({field:'halal', prompt:`Is halal certification important for the ${item}?`, options:['Halal required','No halal requirement']}) }
   if (meat && !intake.cut) { elicit({field:'cut', prompt:`Whole ${item}, or particular cuts?`, options:['Whole','Breast','Thigh','Drumsticks','Mixed cuts']}) }
   if (meat && intake.freshness == null) { elicit({field:'freshness', prompt:'Fresh or frozen?', options:['Fresh','Frozen','Either']}) }
-  if (!intake.deadline) { elicit({field:'deadline', prompt:'When is the latest you need it delivered?'}) }
-  if (!intake.deliveryLocation) { elicit({field:'deliveryLocation', prompt:'What is the delivery address or area?'}) }
+  if (!intake.deadline) { elicit({field:'deadline', prompt:'What exact date and time must it arrive? For example, tomorrow by 8 am.'}) }
+  if (!intake.deliveryLocation) { elicit({field:'deliveryLocation', prompt:'What is the full delivery address, including suburb and postcode?'}) }
   if (intake.budgetCents == null) { elicit({field:'budget', prompt:'Is there a budget cap we should aim under?'}) }
-  if (intake.paymentDays == null) { elicit({field:'payment', prompt:'Any preferred payment terms, like net 30?'}) }
+  if (intake.paymentDays == null) { elicit({field:'payment', prompt:'What minimum payment terms do you need—on delivery, net 7, net 14, or net 30?'}) }
   if (intake.depositBps == null) { elicit({field:'deposit', prompt:'What is the maximum deposit you will accept?',options:['No deposit','10%','25%','50%']}) }
   return questions.slice(0, limits.haltAfter)
 }
@@ -54,67 +55,95 @@ export function parseCut(text: string): string | null {
   return match ? match[1].toLowerCase() : null
 }
 
+export function canonicalIntakeField(field: string) {
+  return ({paymentDays:'payment',paymentTerms:'payment',depositBps:'deposit',depositTerms:'deposit',delivery:'deadline',deliveryTime:'deadline',deliveryAddress:'deliveryLocation',location:'deliveryLocation'} as Record<string,string>)[field] ?? field
+}
+
+function parseItem(response: string) {
+  const item = correctionTail(response).replace(/^(?:i\s+)?(?:want|need|would like)\s+/i,'').replace(/^(?:some|the)\s+/i,'').replace(/[.]+$/,'').trim().slice(0,120)
+  return item && !/^(?:whatever|anything|same as before|you know)$/i.test(item) ? item : null
+}
+
+function parseDeliveryLocation(response: string) {
+  const location = correctionTail(response).replace(/^(?:deliver(?:y|ed)?(?:\s+it)?\s+(?:to|at)|send(?:\s+it)?\s+to|to)\s+/i,'').trim().slice(0,200)
+  return /\d+\s+\S+|\b(?:vic|nsw|qld|wa|sa|tas|nt|act)\s*\d{4}\b/i.test(location) ? location : null
+}
+
+export function isIntakeResponseUnderstood(field: string, response: string) {
+  switch (canonicalIntakeField(field)) {
+    case 'item': return parseItem(response) != null
+    case 'quantity': return (parseQuantity(response)?.quantity ?? 0) > 0
+    case 'budget': return (parseMoneyCents(response)?.cents ?? 0) > 0
+    case 'deadline': return normalizeDeadline(response) != null
+    case 'deliveryLocation': return parseDeliveryLocation(response) != null
+    case 'payment': { const value = parsePaymentDays(response); return value != null && value >= 0 && value <= 365 }
+    case 'deposit': { const value = parseDepositBps(response); return value != null && value >= 0 && value <= 10_000 }
+    case 'halal': return parseHalalRequirement(response) != null
+    case 'cut': return parseCut(response) != null
+    case 'freshness': return parseFreshness(response) != null
+    default: return false
+  }
+}
+
 export function applyResponse(intake: NormalizedIntake, field: string, response: string): NormalizedIntake {
   const text = ` ${response.trim()} `
   const next: NormalizedIntake = {...intake, evidence:[...intake.evidence], missingFields:[...intake.missingFields]}
-  const mark = (removed: string) => { next.missingFields = next.missingFields.filter(name => name !== removed) }
-  switch (field) {
-    case 'item':
-      next.item = response.trim().slice(0, 120).replace(/^i ?(want|need) /i,'').replace(/\.$/,'')
-      mark('item')
+  const canonicalField = canonicalIntakeField(field)
+  switch (canonicalField) {
+    case 'item': {
+      const item = parseItem(response)
+      if (item) next.item = item
       break
+    }
     case 'quantity': {
-      const match = /\b(\d+(?:\.\d+)?)\s*(kg|kilos?|kilograms?|litres?|liters?|l|units?|boxes?|cases?|cartons?|trays?)\b/i.exec(response)
-      if (match) { next.quantity = Number(match[1]); next.unit = match[2].toLowerCase().replace(/s$/,''); mark('quantity') }
+      const parsed = parseQuantity(response)
+      if (parsed && parsed.quantity > 0) { next.quantity = parsed.quantity; next.unit = parsed.unit }
       break
     }
     case 'budget': {
-      const match = /\$\s*([\d,]+(?:\.\d{1,2})?)|([\d,]+)\s*dollars?\b/i.exec(response)
-      if (match) { next.budgetCents = Math.round(Number((match[1] ?? match[2]).replace(',','')) * 100); mark('budget') }
+      const parsed = parseMoneyCents(response)
+      if (parsed && parsed.cents > 0) next.budgetCents = parsed.cents
       break
     }
     case 'deadline': {
       const normalized = normalizeDeadline(response)
-      if (normalized) { next.deadline = normalized; mark('deadline') }
+      if (normalized) next.deadline = normalized
       break
     }
-    case 'deliveryLocation':
-      next.deliveryLocation=response.trim().slice(0,200)
-      mark('deliveryLocation')
+    case 'deliveryLocation': {
+      const location = parseDeliveryLocation(response)
+      if (location) next.deliveryLocation=location
       break
+    }
     case 'payment': {
-      const match = /\b(?:net\s*)?(\d{1,3})\s*days?\b/i.exec(response)
-      if (match) { next.paymentDays = Number(match[1]); mark('payment') }
-      else if (/\b(due on delivery|no preference|none|any terms?)\b/i.test(response)) { next.paymentDays = 0; mark('payment') }
+      const days = parsePaymentDays(response)
+      if (days != null && days >= 0 && days <= 365) next.paymentDays = days
       break
     }
     case 'deposit': {
-      const match=/\b(\d{1,3}(?:\.\d{1,2})?)\s*%/.exec(response)
-      if(/\b(no|zero|none)\b/i.test(response)){next.depositBps=0;mark('deposit')}
-      else if(match&&Number(match[1])<=100){next.depositBps=Math.round(Number(match[1])*100);mark('deposit')}
+      const bps = parseDepositBps(response)
+      if (bps != null) next.depositBps = bps
       break
     }
     case 'halal': {
-      const positive = /\b(yes|yeah|required|important|definitely|must|halal)\b/i.test(text)
-      const negative = /\b(no|not|don'?t|doesn'?t matter|any)\b/i.test(text)
-      if (positive && !negative) { next.halal = true; mark('halal') }
-      else if (negative) { next.halal = false; mark('halal') }
+      const halal = parseHalalRequirement(text)
+      if (halal != null) next.halal = halal
       break
     }
     case 'cut': {
-      const cut = parseCut(text)
-      if (cut) { next.cut = cut; mark('cut') }
+      const cut = parseCut(correctionTail(text))
+      if (cut) next.cut = cut
       break
     }
     case 'freshness': {
-      if (/\bfresh\b/i.test(text) && !/\bfrozen\b/i.test(text)) { next.freshness = 'fresh'; mark('freshness') }
-      else if (/\bfrozen\b/i.test(text)) { next.freshness = 'frozen'; mark('freshness') }
-      else if (/\b(either|doesn'?t matter|anything)\b/i.test(text)) { next.freshness = 'either'; mark('freshness') }
+      const freshness = parseFreshness(text)
+      if (freshness) next.freshness = freshness
       break
     }
   }
-  if (next.missingFields.length === 0) next.confidence = 1
-  next.evidence.push({field, text:response.trim().slice(0, 200)})
+  next.missingFields = missingFieldsOf(next)
+  next.confidence = next.missingFields.length === 0 ? 1 : Math.max(0, 1 - next.missingFields.length / 10)
+  next.evidence.push({field:canonicalField, text:response.trim().slice(0, 200)})
   return next
 }
 

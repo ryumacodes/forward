@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
 import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature, voicemailDetected, type TranscriptTurn } from '../../../src/features/voice/webhook.ts'
-import { completeQueueItem, dispatchNextSupplierCall, retryQueueItemAfterInitiationFailure } from '../_shared/call-queue.ts'
+import { cancelRequestQueue, completeQueueItem, dispatchNextSupplierCall, retryQueueItemAfterInitiationFailure } from '../_shared/call-queue.ts'
 import { sendMissedOwnerCallFallback } from '../_shared/owner-notifications.ts'
 
 declare const EdgeRuntime:{waitUntil(promise:Promise<unknown>):void}
@@ -42,7 +42,7 @@ Deno.serve(async request=>{
     if(event.type==='call_initiation_failure'){
       await client.from('supplier_calls').update({status:'failed',provider_error:event.data.failure_reason||'Call initiation failed',completed_at:new Date().toISOString(),provider_analysis:event.data.metadata||{}}).eq('id',call.id)
       await retryQueueItemAfterInitiationFailure(client,call.queue_item_id,call.id,event.data.failure_reason||'Call initiation failed')
-      EdgeRuntime.waitUntil(dispatchNextSupplierCall(client,call.organization_id,call.request_id).catch(error=>console.error('Unable to continue supplier call queue',error)))
+      EdgeRuntime.waitUntil(continueOrFinishQueue(client,call.organization_id,call.request_id).catch(error=>console.error('Unable to continue supplier call queue',error)))
       return json({status:'received'})
     }
     if(event.type!=='post_call_transcription')return json({status:'ignored'})
@@ -79,13 +79,26 @@ Deno.serve(async request=>{
       const functionUrl=`${supabaseUrl}/functions/v1/procurement-action`
       const purchaseResponse=await fetch(functionUrl,{method:'POST',headers:{Authorization:`Bearer ${serviceKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'auto_purchase',organizationId:call.organization_id,quoteId:storedQuote.id})})
       const purchase=await purchaseResponse.json().catch(()=>({})) as {status?:string}
-      if(purchase.status!=='sent')await client.from('procurement_requests').update({status:'Needs approval'}).eq('id',call.request_id).eq('organization_id',call.organization_id).in('status',['Ready to source','Calling suppliers'])
+      if(purchase.status==='approval_required'){
+        await Promise.all([
+          cancelRequestQueue(client,call.organization_id,call.request_id),
+          client.from('procurement_requests').update({status:'Needs approval'}).eq('id',call.request_id).eq('organization_id',call.organization_id).in('status',['Ready to source','Calling suppliers']),
+        ])
+      }
       if(purchase.status==='sent')return json({status:'received',quote:'stored',needsReview:false,autoPurchase:'sent'})
     }
     return json({status:'received',quote:quantity&&total!==null?'stored':'incomplete',needsReview})
   }catch(error){return json({error:error instanceof Error?error.message:'Webhook processing failed.'},500)}
-  finally{if(queueContext)EdgeRuntime.waitUntil(dispatchNextSupplierCall(queueContext.client,queueContext.organizationId,queueContext.requestId).catch(error=>console.error('Unable to continue supplier call queue',error)))}
+  finally{if(queueContext)EdgeRuntime.waitUntil(continueOrFinishQueue(queueContext.client,queueContext.organizationId,queueContext.requestId).catch(error=>console.error('Unable to continue supplier call queue',error)))}
 })
+
+async function continueOrFinishQueue(client:ReturnType<typeof createClient>,organizationId:string,requestId:string){
+  const next=await dispatchNextSupplierCall(client,organizationId,requestId)
+  if(next)return next
+  const {data:request}=await client.from('procurement_requests').select('status').eq('id',requestId).eq('organization_id',organizationId).single()
+  if(request?.status==='Calling suppliers')await client.from('procurement_requests').update({status:'Needs approval'}).eq('id',requestId).eq('organization_id',organizationId).eq('status','Calling suppliers')
+  return null
+}
 
 function positiveNumber(value:unknown){const number=Number(value);return Number.isFinite(number)&&number>0?number:null}
 function nonNegativeInteger(value:unknown){const number=Number(value);return Number.isInteger(number)&&number>=0?number:null}

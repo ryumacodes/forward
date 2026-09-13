@@ -1,6 +1,7 @@
 import type { DiscoveryProfileId } from '../discovery/engine'
+import type { SourcingMode } from './workflow'
 
-export type ProcurementRequest = { id: string; item: string; quantity: number; unit: string; budget: number; deadline: string; location: string; status: 'Needs approval' | 'Calling suppliers' | 'Ready to source' | 'Approved'; category: string; brief?: string; purchaseMode?: 'confirm'|'preauthorized'; buyingProfile?: DiscoveryProfileId; confirmationChannel?: string; minimumPaymentDays?: number; maximumDepositPercent?: number; requiresHalal?: boolean; cut?: string; freshness?: 'fresh'|'frozen'|'either'; createdById?: string; createdBy?: string }
+export type ProcurementRequest = { id: string; item: string; quantity: number; unit: string; budget: number; deadline: string; location: string; status: 'Needs approval' | 'Calling suppliers' | 'Ready to source' | 'Approved'; category: string; brief?: string; sourcingMode?: SourcingMode; purchaseMode?: 'confirm'|'preauthorized'; buyingProfile?: DiscoveryProfileId; confirmationChannel?: string; minimumPaymentDays?: number; maximumDepositPercent?: number; requiresHalal?: boolean; cut?: string; freshness?: 'fresh'|'frozen'|'either'; createdById?: string; createdBy?: string }
 export type Offer = { id: string; name: string; initials: string; item?: string; quantity: number; price: number; delivery: string; onTime: boolean; exact: boolean; minutes: string; paymentDays: number; depositPercent: number; fees: number; originalPaymentDays: number; onTimeDeliveries: number; completedOrders: number; authorised: boolean; abnVerified: boolean; termsConfirmed: boolean; requestId?: string; transcript?: {role:'agent'|'user';message:string}[]; live?: boolean; manuallyAdded?: boolean; supplierContact?: { abn: string; contactName?: string; phone: string; email?: string; source: string; note?: string } }
 
 function localDateTime(now: Date, dayOffset: number, hour: number, minute = 0) {
@@ -26,8 +27,8 @@ export function createDemoSeed(now = new Date()): { requests: ProcurementRequest
   const metroDelivery = localDateTime(now, 2, 9)
   return {
     requests: [
-      { id: 'REQ-024', item: 'Chicken breast', quantity: 30, unit: 'kg', budget: 350, deadline: primaryDeadline, location: '24 Flinders Lane, Melbourne', status: 'Needs approval', category: 'Poultry · Fresh produce', minimumPaymentDays: 14, maximumDepositPercent: 0 },
-      { id: 'REQ-023', item: 'Takeaway containers', quantity: 500, unit: 'units', budget: 180, deadline: packagingDeadline, location: '24 Flinders Lane, Melbourne', status: 'Calling suppliers', category: 'Packaging' },
+      { id: 'REQ-024', item: 'Chicken breast', quantity: 30, unit: 'kg', budget: 350, deadline: primaryDeadline, location: '24 Flinders Lane, Melbourne', status: 'Needs approval', category: 'Poultry · Fresh produce', sourcingMode: 'compare', purchaseMode: 'confirm', minimumPaymentDays: 14, maximumDepositPercent: 0 },
+      { id: 'REQ-023', item: 'Takeaway containers', quantity: 500, unit: 'units', budget: 180, deadline: packagingDeadline, location: '24 Flinders Lane, Melbourne', status: 'Calling suppliers', category: 'Packaging', sourcingMode: 'first_qualifying', purchaseMode: 'preauthorized' },
       { id: 'REQ-022', item: 'Extra virgin olive oil', quantity: 20, unit: 'L', budget: 260, deadline: approvedDeadline, location: '24 Flinders Lane, Melbourne', status: 'Approved', category: 'Pantry' },
     ],
     offers: [

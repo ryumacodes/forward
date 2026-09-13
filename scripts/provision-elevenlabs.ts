@@ -19,6 +19,7 @@ type JsonSchema = {type: 'object'; description?: string; required?: string[]; pr
 type ToolDefinition = {name: string; description: string; parameters: JsonSchema}
 
 const intakeProperties = {
+  requestText: {type: 'string', description: 'The caller’s exact verbatim initial procurement request. Do not paraphrase or omit slang.'},
   item: {type: 'string', description: 'Exact product requested.'},
   quantity: {type: 'number', description: 'Requested quantity.'},
   unit: {type: 'string', description: 'Quantity unit such as kg, units, L, or boxes.'},
@@ -30,13 +31,14 @@ const intakeProperties = {
   budgetCents: {type: 'number', description: 'All-in maximum budget in Australian cents.'},
   paymentDays: {type: 'number', description: 'Minimum days from invoice.'},
   depositBps: {type: 'number', description: 'Maximum deposit in basis points; 100 basis points equals 1%.'},
+  sourcingMode: {type: 'string', enum: ['first_qualifying', 'compare'], description: 'Use compare only when the caller asks to compare, shop around, find the cheapest/best option, or contact multiple suppliers; otherwise use first_qualifying.'},
 }
 
 const tools: ToolDefinition[] = [
   {
     name: 'clarify_intake_details',
     description: 'Check the currently known procurement details and return the single highest-priority question that still needs to be asked. Call this after the initial request and whenever details change.',
-    parameters: {type: 'object', properties: intakeProperties},
+    parameters: {type: 'object', required: ['requestText'], properties: intakeProperties},
   },
   {
     name: 'apply_intake_answer',
@@ -77,11 +79,7 @@ const listedTools = await api('/tools') as {tools?: Array<{id: string; tool_conf
 const toolIds: string[] = []
 for (const definition of tools) {
   const existing = listedTools.tools?.find(tool => tool.tool_config?.name === definition.name)
-  if (existing) {
-    toolIds.push(existing.id)
-    continue
-  }
-  const created = await api('/tools', {method: 'POST', body: JSON.stringify({tool_config: {
+  const toolConfig = {
     type: 'client',
     name: definition.name,
     description: definition.description,
@@ -89,7 +87,13 @@ for (const definition of tools) {
     response_timeout_secs: 10,
     execution_mode: 'immediate',
     parameters: definition.parameters,
-  }})}) as {id: string}
+  }
+  if (existing) {
+    await api(`/tools/${existing.id}`, {method: 'PATCH', body: JSON.stringify({tool_config: toolConfig})})
+    toolIds.push(existing.id)
+    continue
+  }
+  const created = await api('/tools', {method: 'POST', body: JSON.stringify({tool_config: toolConfig})}) as {id: string}
   toolIds.push(created.id)
 }
 
@@ -97,9 +101,11 @@ const prompt = `You are Sarah, SourcePilot's conversational voice procurement as
 
 Speak naturally, warmly, and concisely. Start by asking what the owner needs. Explain that you are an AI assistant if asked. Never claim that you called a supplier, verified an ABN, placed an order, sent a message, or made a payment during this browser conversation.
 
-Your job is to create a precise procurement brief. Capture the exact item, positive quantity and unit, unambiguous delivery date and time, delivery address, all-in AUD budget, minimum payment days, and maximum deposit. For meat or poultry also capture halal requirement, cut or format, and fresh/frozen/either. Ask one short question at a time and do not repeat answered questions.
+Understand ordinary Australian speech and slang without correcting the caller's wording: for example arvo, brekkie, tomoz, bucks, a coupla, a fortnight, COD, yeah nah, and not fussed. Treat self-corrections such as “actually”, “sorry”, “make that”, and “instead” as replacements for the earlier value, and briefly repeat the corrected value. Never convert vague timing such as “this arvo”, “first thing”, or “before brekkie” into an invented clock time—ask for the exact date and time.
 
-After the initial request, call clarify_intake_details with everything known. After each answer, call apply_intake_answer with the complete accumulated intake, the field, and the verbatim answer. Treat tool responses as authoritative. When no fields remain, call confirm_intake and read its confirmation naturally. Ask the owner to confirm or correct it. Only after explicit confirmation may you call check_supply_before_call, and present results as candidates requiring ABN verification and owner authorisation. Never start supplier outreach or purchasing from this conversation.
+Your job is to create a precise procurement brief. Capture the exact item, positive quantity and unit, unambiguous delivery date and time, delivery address, all-in AUD budget, minimum payment days, and maximum deposit. For meat or poultry also capture halal requirement, cut or format, and fresh/frozen/either. Capture sourcingMode=compare when the caller asks to compare, shop around, find the cheapest or best quote, or contact several suppliers; otherwise use sourcingMode=first_qualifying. In compare mode, tell the caller Sarah will finish the supplier queue, return a ranked summary, and wait for the owner to choose. In first_qualifying mode, Sarah stops calling once a quote passes every rule; a purchase order is issued only if that request is explicitly pre-authorised, otherwise the owner still approves it. Ask one short question at a time and do not repeat answered questions.
+
+Critical tool rule: after every user utterance about a procurement request, your next action must be a client-tool call before you speak. Never ask an intake question from memory. After the initial request, always call clarify_intake_details with requestText set to the caller's complete verbatim request, plus every structured value you understand—even when the request is incomplete or uses slang—and speak only the exact next gap returned by the tool. Never omit requestText or paraphrase it. After each later answer or correction, always call apply_intake_answer with the complete accumulated intake, the field, and the caller's verbatim response before replying. Treat tool responses as authoritative. If a tool returns understood=false or leaves that field missing, acknowledge naturally and ask its clarification again with a concrete example; never silently skip it. Continue one question at a time until item, positive quantity and unit, exact delivery date and time, full delivery address, all-in budget, payment terms, deposit cap, and any product-specific requirements are present. When no fields remain, call confirm_intake and read its confirmation naturally. If confirm_intake reports missing fields, keep asking rather than confirming. Ask the owner to confirm or correct the final recap. Only after explicit confirmation may you call check_supply_before_call, and present results as candidates requiring ABN verification and owner authorisation. Never start supplier outreach or purchasing from this conversation.
 
 If the owner says stop, do not contact, or wants to end, acknowledge immediately and end politely.`
 

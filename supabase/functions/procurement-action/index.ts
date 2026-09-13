@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
 import { normalizeAustralianPhone } from '../../../src/features/voice/trustPolicy.ts'
 import { completionSummary } from '../../../src/features/communications/completion.ts'
 import { sendMissedOwnerCallFallback } from '../_shared/owner-notifications.ts'
+import { decideQuoteDisposition } from '../../../src/features/requests/workflow.ts'
 
 declare const EdgeRuntime:{waitUntil(promise:Promise<unknown>):void}
 
@@ -22,7 +23,12 @@ Deno.serve(async request=>{
     if(body.action==='auto_purchase'){
       if(authorization!==`Bearer ${serviceKey}`)return json({error:'Service authorization is required.'},403)
       const context=await quoteContext(client,body.organizationId,body.quoteId)
-      if(!context.policy.auto_purchase||!context.policy.preauthorized_by)return json({status:'approval_required'},202)
+      const blockers=purchaseBlockers(context)
+      const details=context.request.details as Record<string,unknown>
+      const disposition=decideQuoteDisposition({sourcingMode:details.sourcingMode==='first_qualifying'?'first_qualifying':'compare',purchaseMode:context.policy.auto_purchase&&context.policy.preauthorized_by?'preauthorized':'confirm',quoteQualifies:blockers.length===0})
+      if(disposition==='quote_not_qualifying')return json({status:disposition,blockers},202)
+      if(disposition!=='auto_purchase')return json({status:disposition},202)
+      if(!context.policy.preauthorized_by)return json({status:'approval_required'},202)
       return await issuePurchaseOrder(client,body.organizationId,context.policy.preauthorized_by,context,'preauthorized')
     }
     const userClient=createClient(supabaseUrl,anonKey,{global:{headers:{Authorization:authorization}}})

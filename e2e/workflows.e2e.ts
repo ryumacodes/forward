@@ -20,19 +20,23 @@ async function enterWorkspace(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: 'Voice procurement' })).toBeVisible()
 }
 
-test('voice request can be structured, reviewed, and created', async ({ page }) => {
+test('slang-heavy voice request can be structured, reviewed, and created', async ({ page }) => {
   await enterWorkspace(page)
   await page.getByRole('button', { name: /Talk to Sarah|Start talking/ }).first().click()
   const dialog = page.getByRole('dialog', { name: 'Sarah' })
-  await dialog.getByLabel('Your request').fill('Need 30 kg of fresh halal chicken breast delivered to 24 Flinders Lane, Melbourne tomorrow before 8 am under $350 net 14 days and no deposit.')
+  await dialog.getByLabel('Your request').fill('Need half a dozen boxes of fresh halal chicken breast fillets delivered to 24 Flinders Lane, Melbourne VIC 3000 tomoz before eight in the morning, under three hundred and fifty bucks, a fortnight from invoice and nothing upfront mate. Compare a few suppliers and let me choose.')
   await dialog.getByRole('button', { name: /review structured request/i }).click()
 
   await expect(page.getByRole('dialog', { name: 'Review your request' })).toBeVisible()
   await expect(page.getByLabel('Structured request review')).toContainText('Structured locally')
   await expect(page.getByLabel('Item')).toHaveValue(/chicken breast/i)
-  await expect(page.getByLabel('Quantity')).toHaveValue('30')
+  await expect(page.getByLabel('Quantity')).toHaveValue('6')
+  await expect(page.getByLabel('Unit')).toHaveValue('boxes')
   await expect(page.getByLabel('Maximum budget (AUD)')).toHaveValue('350')
   await expect(page.getByLabel('Delivery address')).toHaveValue(/Flinders Lane/i)
+  const reviewDialog = page.getByRole('dialog', { name: 'Review your request' })
+  await expect(reviewDialog.getByLabel('Sourcing approach')).toHaveValue('compare')
+  await expect(reviewDialog.getByLabel('When a quote meets every requirement')).toHaveValue('confirm')
   await page.getByRole('button', { name: /confirm & create request/i }).click()
 
   await expect(page.getByRole('heading', { name: 'Requests', exact: true }).first()).toBeVisible()
@@ -52,6 +56,7 @@ test('manual request wizard completes all controls', async ({ page }) => {
   await wizard.getByLabel('Maximum budget (AUD)').fill('240')
   await wizard.getByRole('button', { name: 'Continue' }).click()
   await wizard.getByLabel('Minimum payment terms').selectOption('14')
+  await wizard.getByLabel('Sourcing approach').selectOption('compare')
   await wizard.getByLabel('Purchase approval').selectOption('confirm')
   await wizard.getByRole('button', { name: 'Add request' }).click()
 
@@ -74,7 +79,32 @@ test('supplier import and call transcript workflows are reachable', async ({ pag
 
   await page.getByRole('button', { name: 'Call activity', exact: true }).click()
   await page.getByRole('button', { name: /Victorian Foods/ }).click()
-  await expect(page.getByRole('dialog', { name: 'Call transcript' })).toContainText('DEMO CALL TRANSCRIPT')
+  const transcript = page.getByRole('dialog', { name: 'Call transcript' })
+  await expect(transcript).toContainText('DEMO CALL TRANSCRIPT')
+  await expect(transcript.getByText('SARAH · SOURCEPILOT AI').first()).toBeVisible()
+  await expect(transcript.getByText('VICTORIAN FOODS').first()).toBeVisible()
+  await expect(transcript.locator('.speech')).toHaveCount(5)
   await page.getByRole('button', { name: 'Back to workspace' }).click()
   await expect(page.getByRole('dialog', { name: 'Call transcript' })).not.toBeVisible()
+})
+
+test('both supplier sourcing strategies enforce the right approval behavior', async ({ page }) => {
+  await enterWorkspace(page)
+  await page.getByRole('button', { name: /^Requests/ }).click()
+  await page.getByRole('button', { name: 'Add Request' }).click()
+  const wizard = page.getByRole('dialog', { name: 'Add request' })
+  await wizard.getByLabel('Item or product').fill('Cleaning cloths')
+  await wizard.getByLabel('Category').fill('Cleaning')
+  await wizard.getByLabel('Quantity').fill('100')
+  await wizard.getByRole('button', { name: 'Continue' }).click()
+  await wizard.getByLabel('Maximum budget (AUD)').fill('200')
+  await wizard.getByRole('button', { name: 'Continue' }).click()
+  const sourcing = wizard.getByLabel('Sourcing approach')
+  const approval = wizard.getByLabel('Purchase approval')
+  await sourcing.selectOption('compare')
+  await expect(approval).toHaveValue('confirm')
+  await expect(approval.locator('option[value="preauthorized"]')).toHaveAttribute('disabled', '')
+  await sourcing.selectOption('first_qualifying')
+  await approval.selectOption('preauthorized')
+  await expect(approval).toHaveValue('preauthorized')
 })

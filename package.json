@@ -10,6 +10,7 @@
     "test:e2e": "playwright test",
     "test:cdp": "bun run scripts/cdp-live-e2e.ts",
     "test:voice-provider": "bun run scripts/cdp-voice-provider-e2e.ts",
+    "test:communications-live": "bun run scripts/live-communications-e2e.ts",
     "provision:voice": "bun run scripts/provision-elevenlabs.ts"
   },
   "dependencies": {

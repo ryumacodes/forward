@@ -1,6 +1,7 @@
 import { test, expect } from 'bun:test'
 import { initialRequests, offers } from '../src/features/requests/data'
 import { rankOffers, canPurchase, paymentChecks } from '../src/features/requests/ranking'
+import { decidePostQuoteAction, parseSourcingMode } from '../src/features/requests/workflow'
 const request = initialRequests[0]
 test('late and partial offers cannot outrank a qualifying offer', () => {
   const ranked = rankOffers(offers, request)
@@ -32,4 +33,17 @@ test('a live quote is not qualifying until supplier authorisation and ABN eviden
   const result=rankOffers([live],request)[0]
   expect(result.qualifies).toBe(false)
   expect(result.reasons).toContain('ABN current')
+})
+test('first-qualifying and comparison sourcing have distinct stopping rules', () => {
+  expect(decidePostQuoteAction({sourcingMode:'first_qualifying',purchaseMode:'preauthorized',quoteQualifies:true,hasMoreSuppliers:true})).toBe('auto_purchase')
+  expect(decidePostQuoteAction({sourcingMode:'first_qualifying',purchaseMode:'confirm',quoteQualifies:true,hasMoreSuppliers:true})).toBe('request_owner_approval')
+  expect(decidePostQuoteAction({sourcingMode:'compare',purchaseMode:'confirm',quoteQualifies:true,hasMoreSuppliers:true})).toBe('continue_sourcing')
+  expect(decidePostQuoteAction({sourcingMode:'compare',purchaseMode:'confirm',quoteQualifies:true,hasMoreSuppliers:false})).toBe('request_owner_selection')
+  expect(decidePostQuoteAction({sourcingMode:'first_qualifying',purchaseMode:'preauthorized',quoteQualifies:false,hasMoreSuppliers:false})).toBe('review_no_match')
+})
+test('natural sourcing instructions select the requested workflow and respect corrections', () => {
+  expect(parseSourcingMode('shop around and find me the best price')).toBe('compare')
+  expect(parseSourcingMode('just buy from the first supplier that meets everything')).toBe('first_qualifying')
+  expect(parseSourcingMode('compare them—actually, just sort it with the first supplier that works')).toBe('first_qualifying')
+  expect(parseSourcingMode('I need 30 kg of chicken')).toBeNull()
 })

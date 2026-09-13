@@ -1,6 +1,8 @@
 export type IntakeSource = 'voice_call'|'voice_note'|'email'|'sms'|'form'
 export type Freshness = 'fresh'|'frozen'|'either'|null
 
+import { canonicalUnit, normalizeAustralianSpeech, parseDepositBps, parseFreshness, parseHalalRequirement, parseMoneyCents, parsePaymentDays, parseQuantity, parseSpokenNumber } from './speech'
+
 export type NormalizedIntake = {
   source: IntakeSource
   summary: string
@@ -41,51 +43,65 @@ const CUT_WORDS = ['whole','breast','fillet','fillets','thigh','drumstick','wing
 
 export function normalizeDeadline(text: string, now = new Date()): string | null {
   if (!text?.trim()) return null
-  const dayToken=DAY_RE.exec(text)?.[1]?.toLowerCase()
-  const time=TIME_RE.exec(text)
+  const normalized=normalizeAustralianSpeech(text)
+  const iso=/\b(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?\b/.exec(normalized)
+  if(iso){
+    const [,year,month,day,hour,minute]=iso
+    const valid=new Date(`${year}-${month}-${day}T${hour}:${minute}:00`)
+    if(!Number.isNaN(valid.getTime())&&valid.getFullYear()===Number(year)&&valid.getMonth()+1===Number(month)&&valid.getDate()===Number(day)&&Number(hour)<24&&Number(minute)<60)return `${year}-${month}-${day}T${hour}:${minute}`
+  }
+  const dayToken=DAY_RE.exec(normalized)?.[1]?.toLowerCase()
+  const numericTime=TIME_RE.exec(normalized)
+  const spokenTime=/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?::(\d{2}))?\s*(?:in the\s+)?(morning|afternoon|evening|night)\b/i.exec(normalized)
+  const specialTime=/\b(noon|midnight)\b/i.exec(normalized)
+  let hour:number|null=null,minute=0,meridiem=''
+  if(numericTime){hour=Number(numericTime[1])%12;if(numericTime[3].toLowerCase()==='pm')hour+=12;minute=Number(numericTime[2]||0);meridiem=numericTime[3].toLowerCase()}
+  else if(spokenTime){hour=parseSpokenNumber(spokenTime[1]);minute=Number(spokenTime[2]||0);const period=spokenTime[3].toLowerCase();if(hour!=null&&period!=='morning'&&hour<12)hour+=12;meridiem=period==='morning'?'am':'pm'}
+  else if(specialTime){hour=specialTime[1].toLowerCase()==='noon'?12:0;meridiem=hour===12?'pm':'am'}
   if(dayToken==='today'||dayToken==='tomorrow'||dayToken==='tonight'){
     // A relative day without a stated time is incomplete. Reusing the current
     // clock would invent a deadline and could incorrectly approve a late quote.
-    if(!time)return null
+    if(hour==null)return null
     const date=new Date(now)
     if(dayToken==='tomorrow')date.setDate(date.getDate()+1)
-    let hour=Number(time[1])%12;if(time[3].toLowerCase()==='pm')hour+=12;date.setHours(hour,Number(time[2]||0),0,0)
+    date.setHours(hour,minute,0,0)
     return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}T${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`
   }
   const dayName=dayToken?DAY_WORD[dayToken]:''
-  const timeLabel=time?`${Number(time[1])}${time[2]?`:${time[2]}`:''}${time[3].toLowerCase()}`:''
-  return [dayName,timeLabel].filter(Boolean).join(' ')||text.trim()||null
+  const displayHour=hour==null?'':hour===0?12:hour>12?hour-12:hour
+  const timeLabel=hour==null?'':`${displayHour}${minute?`:${String(minute).padStart(2,'0')}`:''}${meridiem}`
+  return dayName&&timeLabel?[dayName,timeLabel].join(' '):null
 }
 
 export function previewNormalize(source: IntakeSource, text: string, now = new Date()): NormalizedIntake {
-  const quantityMatch=/\b(\d+(?:\.\d+)?)\s*(kg|kilos?|litres?|liters?|l|units?|boxes?|cases?)\b/i.exec(text)
-  const budgetMatch=/(?:under|budget(?: of| is|:)?|up to|max(?:imum)?(?: of)?|or less|cap(?:ped)?(?: at)?|for)\s*(?:\$\s*([\d,]+(?:\.\d{1,2})?)|([\d,]+(?:\.\d{1,2})?)\s*dollars?\b|([\d,]+(?:\.\d{1,2})?)\s*\$)/i.exec(text)
-  const paymentMatch=/\b(?:net\s*)?(\d{1,3})\s*days?\b/i.exec(text)
-  const depositMatch=/\b(\d{1,3}(?:\.\d{1,2})?)\s*%\s*deposit\b/i.exec(text)
-  const noDeposit=/\bno deposit\b/i.test(text)
-  const locationMatch=/\b(?:deliver(?:ed|y)?\s+(?:to|at)|drop(?:ped)?\s+(?:to|at))\s+([^,.]+?(?:,\s*[^,.]+?)?)(?=\s+(?:by|before|today|tomorrow|under|budget|max|net|and no deposit)|[.]|$)/i.exec(text)
-  const itemMatch=/(?:need|supply|quote(?: for)?|want)\s+(?:about\s+)?(?:\d+(?:\.\d+)?\s*(?:kg|kilos?|litres?|liters?|l|units?|boxes?|cases?)\s+(?:of\s+)?)?([^,.]+?)(?=\s+(?:deliver(?:ed|y)?\s+(?:to|at)|drop(?:ped)?\s+(?:to|at))\b|\s+(?:by|before|today|tomorrow)\b|\s+(?:under|for|at|with)\s+(?:\$|\d)|[,.;]|$)/i.exec(text)
-  const relativeDay=/\b(today|tomorrow|tonight)\b/i.exec(text)
-  const namedDeadline=/\bby\s+([^,;.$]+?)(?=\s+(?:for|under|at|with|pay|net)\b|[,;.]|$)/i.exec(text)?.[1]
-  const deadlineEvidence=relativeDay?[relativeDay[0],TIME_RE.exec(text)?.[0]].filter(Boolean).join(' '):namedDeadline?`by ${namedDeadline}`:''
-  const deadline=deadlineEvidence?normalizeDeadline(deadlineEvidence,now):null
+  const normalizedText=normalizeAustralianSpeech(text)
+  const quantity=parseQuantity(text)
+  const budget=parseMoneyCents(text)
+  const paymentDays=parsePaymentDays(text)
+  const depositBps=parseDepositBps(text)
+  const locationMatch=/\b(?:deliver(?:ed|y)?(?:\s+it)?\s+(?:to|at)|drop(?:ped)?(?:\s+it)?\s+(?:to|at)|send(?:\s+it)?\s+to)\s+([^,.]+?(?:,\s*[^,.]+?)?)(?=\s+(?:by|before|today|tomorrow|under|budget|max|net|and|with)\b|[.;]|$)/i.exec(normalizedText)
+  const itemMatch=/(?:need|supply|quote(?: for)?|want|get me|after)\s+(?:about\s+)?(.+?)(?=\s+(?:deliver(?:ed|y)?|drop(?:ped)?|send(?:\s+it)?\s+to)\b|\s+(?:by|before|today|tomorrow|tonight|under|budget|max|net|with)\b|[,.;]|$)/i.exec(normalizedText)
+  let item=itemMatch?.[1]?.trim()??null
+  if(item&&quantity){const escaped=quantity.evidence.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');item=item.replace(new RegExp(`^${escaped}\\s+(?:of\\s+)?`,'i'),'').trim()||null}
+  const deadline=normalizeDeadline(normalizedText,now)
+  const deadlineEvidence=deadline?(normalizedText.match(/\b(?:by|before)?\s*(?:(?:\d{1,2}(?::\d{2})?\s*(?:am|pm))|(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:\s+in the)?\s+(?:morning|afternoon|evening|night))|noon|midnight)?\s*(?:today|tomorrow|tonight|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)/i)?.[0]??deadline):''
   const stop=/\b(do not (?:call|contact)|don't (?:call|contact)|stop calling|opt out)\b/i.exec(text)
   const timePressure=/\b(i(?:'m| am) busy|in a rush|make it quick)\b/i.exec(text)
   const frustrated=/\b(frustrat\w*|annoy\w*|already told you)\b/i.exec(text)
-  const halalMatch=/\bhalal\b/i.exec(text),nonHalal=/\b(?:non[-\s]?halal|not halal|no halal)\b/i.test(text)
-  const halal=nonHalal?false:halalMatch?true:null
-  const cutMatch=new RegExp(`\\b(${CUT_WORDS.join('|')})\\b`,'i').exec(itemMatch?.[1]||text),cut=cutMatch?.[1].toLowerCase()??null
-  const freshnessMatch=/\b(fresh|frozen|chilled)\b/i.exec(text)
-  const freshness:Freshness=freshnessMatch?(freshnessMatch[1].toLowerCase()==='chilled'?'either':freshnessMatch[1].toLowerCase() as 'fresh'|'frozen'):null
-  const meat=Boolean(itemMatch&&/meat|chicken|beef|lamb|goat|poultry|veal|duck|turkey/i.test(itemMatch[1]))
+  const halal=parseHalalRequirement(text)
+  const halalMatch=/\b(?:halal|not fussed|doesn'?t matter)\b/i.exec(text)
+  const cutMatch=new RegExp(`\\b(${CUT_WORDS.join('|')})\\b`,'i').exec(item||text),cut=cutMatch?.[1].toLowerCase()??null
+  const freshness=parseFreshness(text) as Freshness
+  const freshnessMatch=/\b(fresh|frozen|chilled|either|not fussed|doesn'?t matter)\b/i.exec(text)
+  const meat=Boolean(item&&/meat|chicken|beef|lamb|goat|poultry|veal|duck|turkey/i.test(item))
   const sentimentCue=stop?'stop':frustrated?'frustrated':timePressure?'time_pressure':'neutral'
-  const missingFields=[...(!itemMatch?['item']:[]),...(!quantityMatch?['quantity']:[]),...(!budgetMatch?['budget']:[]),...(!deadline?['deadline']:[]),...(!locationMatch?['deliveryLocation']:[]),...(!paymentMatch?['payment']:[]),...(!depositMatch&&!noDeposit?['deposit']:[]),...(meat&&halal===null?['halal']:[]),...(meat&&!cut?['cut']:[]),...(meat&&!freshness?['freshness']:[])]
+  const missingFields=[...(!item?['item']:[]),...(!quantity?['quantity']:[]),...(!budget?['budget']:[]),...(!deadline?['deadline']:[]),...(!locationMatch?['deliveryLocation']:[]),...(paymentDays==null?['payment']:[]),...(depositBps==null?['deposit']:[]),...(meat&&halal===null?['halal']:[]),...(meat&&!cut?['cut']:[]),...(meat&&!freshness?['freshness']:[])]
   const evidence:NormalizedIntake['evidence']=[]
   if(itemMatch)evidence.push({field:'item',text:itemMatch[0]})
-  if(quantityMatch)evidence.push({field:'quantity',text:quantityMatch[0]})
-  if(budgetMatch)evidence.push({field:'budgetCents',text:budgetMatch[0]})
-  if(paymentMatch)evidence.push({field:'paymentDays',text:paymentMatch[0]})
-  if(depositMatch||noDeposit)evidence.push({field:'depositBps',text:depositMatch?.[0]||'no deposit'})
+  if(quantity)evidence.push({field:'quantity',text:quantity.evidence})
+  if(budget)evidence.push({field:'budgetCents',text:budget.evidence})
+  if(paymentDays!=null)evidence.push({field:'paymentDays',text:text.match(/\b(?:net\s*)?(?:\d+|a|one|two|couple)?\s*(?:days?|weeks?|fortnight|month|cod|cash on delivery|due on delivery)\b/i)?.[0]??'payment terms stated'})
+  if(depositBps!=null)evidence.push({field:'depositBps',text:text.match(/\b(?:no deposit|nothing[^,.]*upfront|\d+(?:\.\d+)?\s*%|(?:ten|twenty|twenty five|quarter|half)\s+(?:percent|upfront))\b/i)?.[0]??'deposit stated'})
   if(deadline)evidence.push({field:'deadline',text:deadlineEvidence})
   if(locationMatch)evidence.push({field:'deliveryLocation',text:locationMatch[0]})
   if(halalMatch)evidence.push({field:'halal',text:halalMatch[0]})
@@ -93,13 +109,10 @@ export function previewNormalize(source: IntakeSource, text: string, now = new D
   if(freshnessMatch)evidence.push({field:'freshness',text:freshnessMatch[0]})
   const cue=stop??timePressure??frustrated
   if(cue)evidence.push({field:'sentimentCue',text:cue[0]})
-  const budgetValue=budgetMatch?(budgetMatch[1]??budgetMatch[2]??budgetMatch[3]):null
   return {
     source,summary:text.trim().slice(0,180),intent:stop?'opt_out':/\b(accept|confirm|go ahead|that's right|correct)\b/i.test(text)?'confirmation':/\b(offer|quote|price)\b/i.test(text)?'quote':'source',
-    item:itemMatch?.[1]?.trim()??null,quantity:quantityMatch?Number(quantityMatch[1]):null,unit:quantityMatch?canonicalUnit(quantityMatch[2]):null,budgetCents:budgetValue?Math.round(Number(budgetValue.replaceAll(',',''))*100):null,
-    deadline,deliveryLocation:locationMatch?.[1]?.trim()??null,paymentDays:paymentMatch?Number(paymentMatch[1]):null,depositBps:noDeposit?0:depositMatch?Math.round(Number(depositMatch[1])*100):null,
+    item,quantity:quantity?.quantity??null,unit:quantity?canonicalUnit(quantity.unit):null,budgetCents:budget?.cents??null,
+    deadline,deliveryLocation:locationMatch?.[1]?.trim()??null,paymentDays,depositBps,
     halal,cut,freshness,sentimentCue,confidence:missingFields.length===0?1:Math.max(0,1-missingFields.length/7),missingFields,evidence,
   }
 }
-
-function canonicalUnit(value:string){const unit=value.toLowerCase();if(/^(kg|kilo)/.test(unit))return 'kg';if(/^(l|litre|liter)/.test(unit))return 'L';if(/^unit/.test(unit))return 'units';if(/^box/.test(unit))return 'boxes';if(/^case/.test(unit))return 'cases';return unit}
