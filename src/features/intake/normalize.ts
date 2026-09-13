@@ -4,8 +4,9 @@ import { missingFieldsOf } from './clarify'
 
 export type IntakeNormalization = {
   model: string
-  mode: 'live' | 'local-preview'
+  mode: 'live' | 'local-preview' | 'local-fallback'
   result: NormalizedIntake
+  fallbackReason?: string
 }
 
 function isNormalizedIntake(value: unknown): value is NormalizedIntake {
@@ -20,15 +21,32 @@ function isNormalizedIntake(value: unknown): value is NormalizedIntake {
     && Array.isArray(item.evidence)
 }
 
-export async function normalizeProcurementIntake(source: IntakeSource, text: string): Promise<IntakeNormalization> {
+type IntakeInvoker = (source: IntakeSource, text: string) => Promise<{data: unknown; error: unknown}>
+
+export async function normalizeProcurementIntake(source: IntakeSource, text: string, liveInvoker?: IntakeInvoker): Promise<IntakeNormalization> {
   const cleaned = text.trim()
   if (!cleaned) throw new Error('Describe what you need before reviewing the request.')
   if (cleaned.length > 50_000) throw new Error('Keep the request under 50,000 characters.')
-  if (!supabase) return { model: 'deterministic-local-preview', mode: 'local-preview', result: previewNormalize(source, cleaned) }
-  const { data, error } = await supabase.functions.invoke('normalize-intake', { body: { source, text: cleaned } })
-  if (error) throw new Error(`Could not structure the request: ${error.message}`)
-  if (!data || !isNormalizedIntake(data.result)) throw new Error('The intake service returned an invalid result. Please try again.')
-  const result = data.result
-  result.missingFields = missingFieldsOf(result)
-  return { model: String(data.model || 'unknown'), mode: 'live', result }
+  const client = supabase
+  const invoke = liveInvoker ?? (client ? ((intakeSource: IntakeSource, intakeText: string) => client.functions.invoke('normalize-intake', { body: { source: intakeSource, text: intakeText } })) : null)
+  if (!invoke) return { model: 'deterministic-local-preview', mode: 'local-preview', result: previewNormalize(source, cleaned) }
+  try {
+    const { data, error } = await invoke(source, cleaned)
+    if (error) throw error
+    const response = data as {result?: unknown; model?: unknown} | null
+    if (!response || !isNormalizedIntake(response.result)) throw new Error('invalid-response')
+    const result = response.result
+    result.missingFields = missingFieldsOf(result)
+    return { model: String(response.model || 'unknown'), mode: 'live', result }
+  } catch {
+    // Intake review is a safety boundary and must remain usable during an Edge
+    // Function or model outage. The conservative local parser leaves uncertain
+    // fields blank so the owner still has to review them before saving.
+    return {
+      model: 'deterministic-local-fallback',
+      mode: 'local-fallback',
+      result: previewNormalize(source, cleaned),
+      fallbackReason: 'Live extraction is temporarily unavailable. Local extraction was used; review every field before creating the request.',
+    }
+  }
 }

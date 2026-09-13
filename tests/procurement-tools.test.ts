@@ -6,6 +6,7 @@ import { defaultNegotiationPolicy, evaluateNegotiation } from '../src/features/n
 import { checkContactPolicy, normalizeAustralianPhone, outboundTrustPrompt, trustedProductIntroduction } from '../src/features/voice/trustPolicy'
 import { demoCandidates, discoveryProfiles, rankCandidates, scoreDiscoveredEvidence } from '../src/features/discovery/engine'
 import { previewNormalize } from '../src/features/intake/schema'
+import { normalizeProcurementIntake } from '../src/features/intake/normalize'
 import { clarifyQuestions, applyResponse, confirmIntake } from '../src/features/intake/clarify'
 import { intakeClientTools } from '../src/features/intake/agentTools'
 import { supplierLeads } from '../src/data/supplierLeads'
@@ -124,6 +125,17 @@ test('intake preview resolves relative deadlines and delivery evidence',()=>{
  expect(result.deliveryLocation).toBe('24 Flinders Lane, Melbourne')
  expect(result.missingFields).toContain('halal')
  expect(result.missingFields).toContain('freshness')
+})
+test('intake preview does not invent a time for an ambiguous spoken deadline',()=>{
+ const result=previewNormalize('voice_note','Need 30 kilos of chicken tomorrow before eight, max $350.',new Date('2026-09-12T10:00:00+10:00'))
+ expect(result.deadline).toBeNull()
+ expect(result.missingFields).toContain('deadline')
+})
+test('intake review falls back safely when the live Edge Function is unavailable',async()=>{
+ const normalized=await normalizeProcurementIntake('voice_note','Need 30 kg of chicken before 8 am tomorrow, max $350.',async()=>({data:null,error:new Error('not deployed')}))
+ expect(normalized.mode).toBe('local-fallback')
+ expect(normalized.fallbackReason).toContain('temporarily unavailable')
+ expect(normalized.result.quantity).toBe(30)
 })
 test('intake preview keeps delivery clauses out of the product name',()=>{
  const result=previewNormalize('voice_note','I need 30 kilos of fresh halal chicken breast fillets delivered to 24 Flinders Lane Melbourne tomorrow before 8 am, maximum $350, net 14 and no deposit.',new Date(2026,8,13,10))

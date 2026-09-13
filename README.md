@@ -92,12 +92,20 @@ The sample proximity view uses cached suburb centroids and Haversine straight-li
 
 Enable the ElevenLabs voicemail-detection system tool on the owner-notification agent. Busy, declined, and no-answer outcomes arrive as call-initiation failures; voicemail is detected from that system tool in the signed post-call transcript. Approval and completion notifications go to the person who started each request, using their profile phone/email and falling back to their Supabase Auth email or the `OWNER_APPROVAL_PHONE` / `OWNER_NOTIFICATION_EMAIL` secrets. AgentMail is used only for owner fallback notifications; Resend remains responsible for supplier briefs and purchase orders.
 
+To create or update Sarah and her browser-side procurement tools, set `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in an ignored local environment file, then run `bun run provision:voice`. Copy the returned agent ID to both `VITE_ELEVENLABS_AGENT_ID` and `ELEVENLABS_AGENT_ID`. The command is idempotent: it reuses tools and the named agent when they already exist.
+
+The live voice checks use a dedicated Chrome instance with remote debugging and synthetic microphone permission. `bun run test:voice-provider` uses direct CDP events to verify a real two-turn ElevenLabs session, audio output, client-tool invocation, and browser console health. `bun run test:cdp` drives the configured app through that same CDP endpoint; set `E2E_EMAIL` and `E2E_PASSWORD` to an explicitly authorised test account when Supabase authentication is enabled. Neither test captures screenshots or traces.
+
 ## Commands
 
 ```bash
 bun run dev      # start the development server
 bun run build    # type-check and create a production build
 bun test         # run the test suite
+bun run test:e2e # run desktop and mobile browser workflows
+bun run provision:voice    # create/update Sarah and the six ElevenLabs client tools
+bun run test:voice-provider # CDP-check live speech, a real turn, and a client tool
+bun run test:cdp            # CDP-check the authenticated app and microphone session
 ```
 
 ## Project structure

@@ -44,9 +44,12 @@ export function normalizeDeadline(text: string, now = new Date()): string | null
   const dayToken=DAY_RE.exec(text)?.[1]?.toLowerCase()
   const time=TIME_RE.exec(text)
   if(dayToken==='today'||dayToken==='tomorrow'||dayToken==='tonight'){
+    // A relative day without a stated time is incomplete. Reusing the current
+    // clock would invent a deadline and could incorrectly approve a late quote.
+    if(!time)return null
     const date=new Date(now)
     if(dayToken==='tomorrow')date.setDate(date.getDate()+1)
-    if(time){let hour=Number(time[1])%12;if(time[3].toLowerCase()==='pm')hour+=12;date.setHours(hour,Number(time[2]||0),0,0)}
+    let hour=Number(time[1])%12;if(time[3].toLowerCase()==='pm')hour+=12;date.setHours(hour,Number(time[2]||0),0,0)
     return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}T${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`
   }
   const dayName=dayToken?DAY_WORD[dayToken]:''
