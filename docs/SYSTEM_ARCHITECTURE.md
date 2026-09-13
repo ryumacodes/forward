@@ -109,7 +109,7 @@ Each request stores a policy snapshot containing maximum delivered total, minimu
 | Every rule passes and request requires confirmation | Present to owner; do not accept on the call |
 | Every rule passes with stored request-scoped pre-authorisation | Server may issue one PO after a fresh atomic recheck; never initiate payment |
 
-An anonymous competing price can be used only when `allowAnonymousMarketAnchor` is enabled. The agent must never name another supplier or invent a quote.
+The deterministic decision engine exposes an anonymous market-anchor permission only when `allowAnonymousMarketAnchor` is enabled. The current live ElevenLabs prompt does not receive that flag or a verified competing price, so the deployed call path does **not** quote a competitor today. Adding that capability safely requires a stored, attributable quote; a freshness rule; explicit request-level permission; and a prompt/tool input that never exposes the supplier's identity. The agent must never name another supplier or invent a quote.
 
 The call opens with the requested product, quantity, buyer business, source of the supplier details, AI disclosure, verification callback, opt-out, and an offer to email the brief. It asks whether the time is convenient, targets a first call under two minutes, avoids scripted persuasion, reads back the final quote, and states that no order has been placed. Frustration, uncertainty, unusual terms, substitutions, and missing facts go to a human.
 
@@ -153,4 +153,3 @@ Do not run a live call until the team has identified the consenting target numbe
 - Failed call initiation releases the queue item for a bounded retry; the per-supplier contact limit still applies.
 - An incomplete or unreconciled quote is stored as `needs_review` and cannot qualify for automatic purchase.
 - An unanswered owner completion call triggers SMS and AgentMail fallback; it does not imply supplier acceptance.
-
