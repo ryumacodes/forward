@@ -57,15 +57,11 @@ export default function App() {
       setAccountBusy(false)
     }
   }
-  const addSupplierQuote = async (offer: Offer) => {
-    const contact = offer.supplierContact
-    if (!contact) throw new Error('Supplier contact details are required.')
-    if (importedSuppliers.some(supplier => supplier.abn === contact.abn)) throw new Error('This ABN is already in your supplier verification queue.')
-    const supplier: ImportedSupplier = { id: crypto.randomUUID(), name: offer.name, abn: contact.abn, phone: contact.phone, email: contact.email, importedAt: new Date().toISOString(), status: 'Awaiting registry check', authorised: false }
-    if (owner) await saveSupplier(supplier, owner.id)
-    setImportedSuppliers(previous => [...previous, supplier])
-    setLiveOffers(previous => [...previous, offer])
-    notify('Supplier lead queued for ABR verification and quote attached for review. No outreach or order was sent.')
+  const addRequest = async (request: Recovery) => {
+    const created = owner ? await saveRecovery(request, owner.id) : request
+    setRecoveries(previous => [created, ...previous])
+    notify(supabase ? 'Request saved to your workspace. No supplier outreach has started.' : 'Request added to the demo queue. No live supplier outreach has started.')
+    return created
   }
   const today = new Intl.DateTimeFormat('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).format(new Date())
   useEffect(() => {
@@ -118,7 +114,7 @@ export default function App() {
         </>}
         </section></div>
       </>}
-      {page === 'Recoveries' && <RecoveriesPage recoveries={recoveries} offers={workspaceOffers} selectedId={selected} live={Boolean(supabase)} onSelect={setSelected} onCreate={() => setModal(true)} onAddOffer={addSupplierQuote} onTranscript={setTranscript}/>}
+      {page === 'Recoveries' && <RecoveriesPage recoveries={recoveries} offers={workspaceOffers} selectedId={selected} live={Boolean(supabase)} onSelect={setSelected} onCreate={() => setModal(true)} onAddRequest={addRequest} onTranscript={setTranscript}/>}
       {page === 'Suppliers' && <section className="directory"><SupplierImport suppliers={importedSuppliers} activeRequestId={selected} onCallStarted={notify} onImport={async supplier => {if(owner)await saveSupplier(supplier,owner.id);setImportedSuppliers(previous => [...previous,supplier])}} onUpdate={supplier => setImportedSuppliers(previous => previous.map(item => item.id === supplier.id ? supplier : item))}/><DiscoveryPolicy/><SupplierLeadList/>{conversationOffers.map(o => <article className="supplier-card" key={o.id}><div className="supplier-heading"><span className="supplier-logo neutral">{o.initials}</span><div><h2>{o.name}</h2><p>{o.live?'Recorded quote supplier':'Melbourne · Poultry & fresh produce · Demo supplier'}</p></div></div><div className="supplier-policy"><ShieldCheck size={16}/> {o.abnVerified&&o.authorised?'ABN verified · Owner authorised':'ABN verification or owner authorisation required'}</div><div className="supplier-stats"><div><span>Last quote</span><strong>{money(o.price)} <small>/ {o.quantity}{o.item?'':'kg'}</small></strong></div><div><span>Last contact</span><strong>{o.live?'Latest completed call':'Demo supplier history'}</strong></div></div><details className="supplier-review"><summary>Check supplier history & terms</summary><p>On-time history: {o.completedOrders?`${o.onTimeDeliveries} of ${o.completedOrders} orders`:'Not established'}. Payment: {paymentLabel(o.paymentDays)}. Deposit: {o.depositPercent}%. Added fees: {money(o.fees)}.</p><p>{o.live?'Quote facts are retained with the verified provider transcript.':'ABN verification must complete before any real outreach. History shown here is sample data.'}</p></details><button className="secondary" onClick={() => setTranscript(o)}><FileText size={16}/> View last conversation</button></article>)}</section>}
       {page === 'Call activity' && <section className="activity-page"><div className="section-header"><h2>Recent supplier calls</h2><span className="demo-badge">{supabase ? `${conversationOffers.length} live quote transcripts` : '3 demo conversations'}</span></div>{conversationOffers.map(o => <CallRow key={o.id} offer={o} onClick={() => setTranscript(o)}/>)}{conversationOffers.length===0&&<p className="import-empty">No completed supplier quote calls yet.</p>}<div className="channel-note"><Phone size={20}/><div><strong>A conversation comes first.</strong><p>SMS and email are follow-up channels when a supplier needs written details. No follow-ups sent.</p></div></div></section>}
       {page === 'Call activity' && <NegotiationTools/>}

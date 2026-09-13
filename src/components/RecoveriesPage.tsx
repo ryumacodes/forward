@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowRight, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Filter, MapPin, Phone, Plus, Search, ShieldCheck, X } from 'lucide-react'
 import { money, validateOffer, type Offer, type Recovery } from '../features/recoveries/data'
-import { AddSupplierQuote } from './AddSupplierQuote'
+import { AddRequest } from './AddRequest'
 
 type RecoveryFilter = 'All' | Recovery['status']
 type DueFilter = 'Any' | 'Overdue' | '24 hours' | '7 days'
@@ -14,7 +14,7 @@ type RecoveriesPageProps = {
   live: boolean
   onSelect: (id: string) => void
   onCreate: () => void
-  onAddOffer: (offer: Offer) => void | Promise<void>
+  onAddRequest: (request: Recovery) => Recovery | Promise<Recovery>
   onTranscript: (offer: Offer) => void
 }
 
@@ -40,7 +40,7 @@ function matchesDueFilter(recovery: Recovery, filter: DueFilter, now: number) {
   return deadline >= now && deadline <= now + horizon
 }
 
-export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect, onCreate, onAddOffer, onTranscript }: RecoveriesPageProps) {
+export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect, onCreate, onAddRequest, onTranscript }: RecoveriesPageProps) {
   const [statusFilter, setStatusFilter] = useState<RecoveryFilter>('All')
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [dueFilter, setDueFilter] = useState<DueFilter>('Any')
@@ -49,7 +49,7 @@ export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect,
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(5)
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [quoteOpen, setQuoteOpen] = useState(false)
+  const [requestOpen, setRequestOpen] = useState(false)
   const [showQuotes, setShowQuotes] = useState(false)
   const categories = useMemo(() => [...new Set(recoveries.map(recovery => recovery.category))].sort(), [recoveries])
   const filtered = useMemo(() => {
@@ -89,12 +89,15 @@ export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect,
     setDetailsOpen(true)
   }
 
-  async function addOffer(offer: Offer) {
-    await onAddOffer(offer)
-    onSelect(offer.requestId ?? selectedId)
-    setShowQuotes(true)
-    setQuoteOpen(false)
-    setDetailsOpen(true)
+  async function addRequest(request: Recovery) {
+    const created = await onAddRequest(request)
+    clearFilters()
+    setSort('Recovery newest')
+    setPage(1)
+    onSelect(created.id)
+    setRequestOpen(false)
+    setDetailsOpen(false)
+    return created
   }
 
   return <section className="recoveries-page">
@@ -106,24 +109,24 @@ export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect,
     </div>
 
     <div className="recovery-toolbar">
-      <div><h2>Recovery queue</h2><p>Track sourcing progress. Open a row only when you need its full detail.</p></div>
-      <button className="primary" disabled={recoveries.length === 0} onClick={() => setQuoteOpen(true)}><Plus size={16}/> Add supplier quote</button>
+      <div><h2>Requests</h2><p>Track sourcing progress. Open a row only when you need its full detail.</p></div>
+      <button className="primary" onClick={() => setRequestOpen(true)}><Plus size={16}/> Add Request</button>
     </div>
 
     <div className="recovery-table-card">
-      <div className="recovery-filters" aria-label="Recovery filters">
-        <label className="search"><Search size={16}/><input aria-label="Search recovery queue" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search ID, item, category or location…"/></label>
+      <div className="recovery-filters" aria-label="Request filters">
+        <label className="search"><Search size={16}/><input aria-label="Search requests" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search ID, item, category or location…"/></label>
         <label className="table-filter"><span>Status</span><select aria-label="Filter by status" value={statusFilter} onChange={event => setStatusFilter(event.target.value as RecoveryFilter)}><option value="All">All statuses</option>{stages.map(stage => <option key={stage}>{stage}</option>)}</select></label>
         <label className="table-filter"><span>Category</span><select aria-label="Filter by category" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}><option>All</option>{categories.map(category => <option key={category}>{category}</option>)}</select></label>
         <label className="table-filter"><span>Due</span><select aria-label="Filter by due date" value={dueFilter} onChange={event => setDueFilter(event.target.value as DueFilter)}><option>Any</option><option>Overdue</option><option>24 hours</option><option>7 days</option></select></label>
         <label className="table-filter"><span>Sort</span><select aria-label="Sort recoveries" value={sort} onChange={event => setSort(event.target.value as SortOption)}><option>Deadline soonest</option><option>Deadline latest</option><option>Budget highest</option><option>Recovery newest</option></select></label>
-        {hasFilters && <button className="clear-filters" onClick={clearFilters}><X size={14}/> Clear</button>}
+        <button className="clear-filters" disabled={!hasFilters} aria-hidden={!hasFilters} onClick={clearFilters}><X size={14}/> Clear</button>
       </div>
 
-      <div className="recovery-result-bar"><span><Filter size={14}/>{filtered.length} {filtered.length === 1 ? 'recovery' : 'recoveries'}</span>{hasFilters && <small>Filtered from {recoveries.length} total</small>}</div>
+      <div className="recovery-result-bar"><span><Filter size={14}/>{filtered.length} {filtered.length === 1 ? 'request' : 'requests'}</span><small className={hasFilters ? '' : 'result-placeholder'}>{hasFilters ? `Filtered from ${recoveries.length} total` : 'All request records'}</small></div>
       <div className="recovery-table-wrap">
         <table className="recovery-table">
-          <thead><tr><th>Recovery</th><th>Status</th><th>Progress</th><th>Quotes</th><th>Budget</th><th>Required by</th><th aria-label="Open details"/></tr></thead>
+          <thead><tr><th>Request</th><th>Status</th><th>Progress</th><th>Quotes</th><th>Budget</th><th>Required by</th><th aria-label="Open details"/></tr></thead>
           <tbody>{visible.map(recovery => {
             const meta = statusCopy[recovery.status]
             const quoteCount = offers.filter(offer => offer.requestId ? offer.requestId === recovery.id : recovery.id === 'REC-024').length
@@ -131,14 +134,14 @@ export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect,
               <td><div className="table-recovery"><span className={`recovery-state state-${meta.step}`}><span/></span><span><small>{recovery.id} · {recovery.category}</small><strong>{recovery.item}</strong><em>{recovery.quantity} {recovery.unit} · {recovery.location}</em></span></div></td>
               <td><span className={`badge ${recovery.status === 'Approved' ? 'green' : recovery.status === 'Needs approval' ? 'amber' : 'neutral-badge'}`}><span className="status-dot"/>{recovery.status}</span></td>
               <td><div className="table-progress"><span><i style={{ width: `${meta.step * 25}%` }}/></span><small>{meta.activity}</small></div></td>
-              <td><strong className="quote-count">{quoteCount}</strong></td>
-              <td><strong className="table-number">{money(recovery.budget)}</strong></td>
-              <td><div className="table-deadline"><Clock3 size={14}/><strong>{deadlineLabel(recovery.deadline)}</strong></div></td>
+              <td data-label="Quotes"><strong className="quote-count">{quoteCount}</strong></td>
+              <td data-label="Budget"><strong className="table-number">{money(recovery.budget)}</strong></td>
+              <td data-label="Required by"><div className="table-deadline"><Clock3 size={14}/><strong>{deadlineLabel(recovery.deadline)}</strong></div></td>
               <td><ChevronRight size={17}/></td>
             </tr>
           })}</tbody>
         </table>
-        {visible.length === 0 && <div className="queue-empty"><Search size={20}/><strong>No matching recoveries</strong><p>Change a filter or clear the search to see the queue.</p><button className="secondary" onClick={clearFilters}>Clear all filters</button></div>}
+        {visible.length === 0 && <div className="queue-empty"><Search size={20}/><strong>No matching requests</strong><p>Change a filter or clear the search to see the queue.</p><button className="secondary" onClick={clearFilters}>Clear all filters</button></div>}
       </div>
 
       <div className="recovery-pagination">
@@ -149,7 +152,7 @@ export function RecoveriesPage({ recoveries, offers, selectedId, live, onSelect,
     </div>
 
     {recoveries.length === 0 && <div className="recoveries-empty"><h2>Create a procurement request first</h2><p>A supplier quote must be attached to an owner-approved recovery brief.</p><button className="primary" onClick={onCreate}><Plus size={16}/> Create procurement request</button></div>}
-    {quoteOpen && <AddSupplierQuote recoveries={recoveries} initialRecoveryId={selected?.id ?? recoveries[0]?.id ?? ''} onAdd={addOffer} onClose={() => setQuoteOpen(false)}/>}
+    {requestOpen && <AddRequest recoveries={recoveries} onAdd={addRequest} onClose={() => setRequestOpen(false)}/>}
     {detailsOpen && selected && <RecoveryDrawer recovery={selected} offers={selectedOffers} recommended={recommended} manualOffers={manualOffers} live={live} showQuotes={showQuotes} onShowQuotes={() => setShowQuotes(value => !value)} onTranscript={onTranscript} onClose={() => setDetailsOpen(false)}/>}
   </section>
 }
