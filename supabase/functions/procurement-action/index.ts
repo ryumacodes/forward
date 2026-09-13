@@ -57,7 +57,8 @@ async function emailBrief(client:ReturnType<typeof createClient>,organizationId:
 async function requestApproval(client:ReturnType<typeof createClient>,organizationId:string,context:Awaited<ReturnType<typeof quoteContext>>){
   const blockers=purchaseBlockers(context)
   if(blockers.length)return json({error:`Approval request blocked: ${blockers.join('; ')}.`,blockers},409)
-  const phone=normalizeAustralianPhone(Deno.env.get('OWNER_APPROVAL_PHONE')||'')
+  const starter=await requesterContact(client,context.request.created_by)
+  const phone=normalizeAustralianPhone(starter.phone)
   const base=(Deno.env.get('APP_BASE_URL')||'').replace(/\/$/,'')
   if(!base.startsWith('https://'))return json({error:'APP_BASE_URL must be the production HTTPS URL before approval SMS can be sent.'},409)
   const details=context.request.details as Record<string,unknown>
@@ -99,9 +100,9 @@ async function quoteContext(client:ReturnType<typeof createClient>,organizationI
   if(!quoteId)throw new Error('Select a supplier quote.')
   const {data:quote}=await client.from('supplier_quotes').select('*').eq('id',quoteId).eq('organization_id',organizationId).single()
   if(!quote)throw new Error('Quote was not found in this organisation.')
-  const [{data:request},{data:supplier},{data:verification},{data:policy}]=await Promise.all([
-    client.from('procurement_requests').select('id,details,status').eq('id',quote.request_id).eq('organization_id',organizationId).single(),
-    client.from('suppliers').select('id,name,email,authorised,do_not_contact').eq('id',quote.supplier_id).eq('organization_id',organizationId).single(),
+const [{data:request},{data:supplier},{data:verification},{data:policy}]=await Promise.all([
+      client.from('procurement_requests').select('id,details,status,created_by').eq('id',quote.request_id).eq('organization_id',organizationId).single(),
+      client.from('suppliers').select('id,name,email,authorised,do_not_contact').eq('id',quote.supplier_id).eq('organization_id',organizationId).single(),
     client.from('supplier_verifications').select('active,name_matched,contact_confirmed,checked_at').eq('supplier_id',quote.supplier_id).eq('organization_id',organizationId).single(),
     client.from('negotiation_policies').select('*').eq('request_id',quote.request_id).eq('organization_id',organizationId).single(),
   ])
@@ -139,15 +140,16 @@ async function createEvent(client:ReturnType<typeof createClient>,row:Record<str
 }
 
 async function notifyOwnerOfCompletion(client:ReturnType<typeof createClient>,input:{organizationId:string;context:Awaited<ReturnType<typeof quoteContext>>;poNumber:string;approvedBy:string}){
-  const phone=normalizeAustralianPhone(Deno.env.get('OWNER_APPROVAL_PHONE')||'')
+  const starter=await requesterContact(client,input.context.request.created_by)
+  const phone=normalizeAustralianPhone(starter.phone)
   const details=input.context.request.details as Record<string,unknown>
   const quoteDetails=input.context.quote.details as Record<string,unknown>
   const summary=completionSummary({poNumber:input.poNumber,supplierName:input.context.supplier.name,item:String(details.item),quantity:Number(input.context.quote.quantity),unit:String(details.unit),totalCents:Number(input.context.quote.total_cents),deliveryTime:String(quoteDetails.deliveryTime),paymentDays:Number(input.context.quote.payment_days),depositBps:Number(input.context.quote.deposit_bps)})
+  const email=starter.email
   if(details.confirmationChannel==='sms'){
     await sendSms(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,body:summary,key:`owner-completion-sms/${input.context.quote.id}`,purpose:'owner_completion'})
     return
   }
-  const email=await ownerNotificationEmail(client,input.approvedBy).catch(error=>{console.error('Unable to resolve owner notification email',error);return ''})
   try{await sendCompletionCall(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,email,summary})}
   catch(error){
     console.error('Owner completion call unavailable; falling back to SMS',error)
@@ -167,14 +169,20 @@ async function sendCompletionCall(client:ReturnType<typeof createClient>,input:{
   await client.from('communication_events').update({status:'sent',provider_id:body.conversation_id,sent_at:new Date().toISOString()}).eq('id',created.event.id)
 }
 
-async function ownerNotificationEmail(client:ReturnType<typeof createClient>,userId:string){
-  const configured=(Deno.env.get('OWNER_NOTIFICATION_EMAIL')||'').trim()
-  if(configured)return configured
-  const {data,error}=await client.auth.admin.getUserById(userId)
-  if(error)throw error
-  const email=data.user?.email?.trim()
-  if(!email)throw new Error('The authorizing owner has no notification email.')
-  return email
+async function requesterContact(client:ReturnType<typeof createClient>,userId?:string|null){
+  const fallbackPhone=(Deno.env.get('OWNER_APPROVAL_PHONE')||'').trim()
+  const fallbackEmail=(Deno.env.get('OWNER_NOTIFICATION_EMAIL')||'').trim()
+  let phone='',email=''
+  if(userId){
+    const {data:profile,error}=await client.from('profiles').select('phone,email').eq('id',userId).maybeSingle()
+    if(!error&&profile){phone=profile.phone?.trim()||'';email=profile.email?.trim()||''}
+    if(!phone||!email){
+      const identity=await client.auth.admin.getUserById(userId).catch(()=>null)
+      if(!phone)phone=String(identity?.data?.user?.user_metadata?.phone||identity?.data?.user?.phone||'').trim()
+      if(!email)email=(identity?.data?.user?.email||'').trim()
+    }
+  }
+  return {phone:phone||fallbackPhone,email:email||fallbackEmail}
 }
 
 async function sendEmail(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId?:string;purpose:'supplier_brief'|'purchase_order';to:string;subject:string;text:string;key:string}){

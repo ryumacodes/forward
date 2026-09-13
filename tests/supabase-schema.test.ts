@@ -3,18 +3,19 @@ import { PGlite } from '@electric-sql/pglite'
 import { readFile } from 'node:fs/promises'
 
 const migrations=[
-  '20260912054141_procurement_workspace.sql',
-  '20260912070155_procurement_policy_and_discovery.sql',
-  '20260912190000_live_abr_authorisation.sql',
-  '20260912203000_supplier_evidence.sql',
-  '20260912220000_trusted_outbound_calls.sql',
-  '20260912233000_live_transcript_quotes.sql',
-  '20260913003000_communications_and_orders.sql',
-  '20260913062821_organization_workspaces.sql',
-  '20260913070244_supplier_call_queue.sql',
-  '20260913071652_automated_sourcing_and_purchase.sql',
-  '20260913073802_harden_automated_purchase.sql',
-  '20260913075049_owner_completion_notifications.sql',
+  '26091201_procurement_workspace.sql',
+  '26091202_procurement_policy_and_discovery.sql',
+  '26091203_live_abr_authorisation.sql',
+  '26091204_supplier_evidence.sql',
+  '26091205_trusted_outbound_calls.sql',
+  '26091206_live_transcript_quotes.sql',
+  '26091301_communications_and_orders.sql',
+  '26091302_organization_workspaces.sql',
+  '26091303_supplier_call_queue.sql',
+  '26091304_automated_sourcing_and_purchase.sql',
+  '26091305_harden_automated_purchase.sql',
+  '26091306_owner_completion_notifications.sql',
+  '26091307_multi_member_orgs_and_request_creator.sql',
 ]
 
 test('organisation membership isolates procurement data and protected evidence',async()=>{
@@ -55,9 +56,26 @@ test('organisation membership isolates procurement data and protected evidence',
     const business=await db.query<{create_organization:string}>("select public.create_organization('Flinders Kitchen')")
     const businessId=business.rows[0].create_organization
     expect((await db.query('select role from public.organization_members where organization_id=$1',[businessId])).rows).toEqual([{role:'owner'}])
+    expect((await db.query<{created_by:string|null}>('select created_by from public.procurement_requests where id=$1',[createdRequestId])).rows).toEqual([{created_by:userA}])
+
+    const added=await db.query<{add_organization_member:string}>("select public.add_organization_member($1,'sam@example.com')",[businessId])
+    expect(added.rows).toEqual([{add_organization_member:userB}])
+    expect((await db.query('select user_id,role from public.organization_members where organization_id=$1 order by user_id',[businessId])).rows).toEqual([{user_id:userA,role:'owner'},{user_id:userB,role:'member'}])
+    expect((await db.query('select id from public.profiles order by id')).rows).toEqual([{id:userA},{id:userB}])
     const automatic=await db.query<{id:string}>('select id from public.create_procurement_request_with_policy($1,$2)',[userA,{item:'Chicken',quantity:30,unit:'kg',budget:350,deadline:'2026-09-14T08:00:00+10:00',location:'Melbourne',purchaseMode:'preauthorized',minimumPaymentDays:14,maximumDepositPercent:0}])
+    expect((await db.query('select created_by from public.procurement_requests where id=$1',[automatic.rows[0].id])).rows).toEqual([{created_by:userA}])
     expect((await db.query('select auto_purchase,preauthorized_by is not null as has_actor,authorization_snapshot is not null as has_snapshot from public.negotiation_policies where request_id=$1',[automatic.rows[0].id])).rows).toEqual([{auto_purchase:true,has_actor:true,has_snapshot:true}])
     await expect(db.query('update public.negotiation_policies set maximum_total_cents=999999 where request_id=$1',[automatic.rows[0].id])).rejects.toThrow()
+
+    await db.exec(`set request.jwt.claim.sub='${userB}';`)
+    const memberRequest=await db.query<{id:string}>('select id from public.create_procurement_request_with_policy($1,$2)',[businessId,{item:'Beef',quantity:10,unit:'kg',budget:100,deadline:'2026-09-14T08:00:00+10:00',location:'Melbourne',purchaseMode:'confirm',minimumPaymentDays:14,maximumDepositPercent:0}])
+    expect((await db.query('select created_by from public.procurement_requests where id=$1',[memberRequest.rows[0].id])).rows).toEqual([{created_by:userB}])
+    await expect(db.query("select public.add_organization_member($1,'taylor@example.com')",[businessId])).rejects.toThrow('Only an owner or administrator')
+    await expect(db.query('select id from public.create_procurement_request_with_policy($1,$2)',[businessId,{item:'Lamb',quantity:5,unit:'kg',budget:90,deadline:'2026-09-14T08:00:00+10:00',location:'Melbourne',purchaseMode:'preauthorized',minimumPaymentDays:14,maximumDepositPercent:0}])).rejects.toThrow('Only an owner or administrator')
+    expect((await db.query<{id:string}>('select id from public.procurement_requests')).rows).toEqual([{id:memberRequest.rows[0].id}])
+    expect((await db.query('select * from public.profiles')).rows).toHaveLength(2)
+
+    await db.exec(`set request.jwt.claim.sub='${userA}';`)
 
     await db.exec('reset role;')
     const userC='33333333-3333-4333-8333-333333333333'

@@ -1,9 +1,12 @@
 -- SourcePilot complete Supabase schema
 -- Paste this entire file into Supabase SQL Editor and click Run.
+-- WARNING: only run against a database that does not already have these
+-- migrations applied (e.g. a fresh preview branch); re-running on an
+-- existing database will fail on already-created objects.
 
 begin;
 
--- Migration: 20260912054141_procurement_workspace.sql
+-- Migration: 26091201_procurement_workspace.sql
 create table public.recovery_requests (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -95,7 +98,7 @@ create policy owner_reads_verifications on public.supplier_verifications for sel
 create policy owner_reads_quotes on public.supplier_quotes for select to authenticated using ((select auth.uid()) = owner_id);
 create policy owner_reads_calls on public.supplier_calls for select to authenticated using ((select auth.uid()) = owner_id);
 
--- Migration: 20260912070155_procurement_policy_and_discovery.sql
+-- Migration: 26091202_procurement_policy_and_discovery.sql
 create table public.discovery_profiles (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -171,7 +174,7 @@ create policy owner_manages_negotiation_policies on public.negotiation_policies 
 create policy owner_reads_intake_results on public.intake_results for select to authenticated using ((select auth.uid()) = owner_id);
 create policy owner_reads_agent_decisions on public.agent_decisions for select to authenticated using ((select auth.uid()) = owner_id);
 
--- Migration: 20260912190000_live_abr_authorisation.sql
+-- Migration: 26091203_live_abr_authorisation.sql
 alter table public.supplier_imports
   add column authorised boolean not null default false,
   add column authorised_at timestamptz;
@@ -181,7 +184,7 @@ alter table public.supplier_imports
 
 create index supplier_imports_owner_authorised_idx on public.supplier_imports(owner_id, authorised);
 
--- Migration: 20260912203000_supplier_evidence.sql
+-- Migration: 26091204_supplier_evidence.sql
 create table public.supplier_evidence (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -208,7 +211,7 @@ create policy owner_reads_supplier_evidence on public.supplier_evidence for sele
 
 comment on table public.supplier_evidence is 'Public web evidence and embeddings used for candidate recall; never an ABR verification or outreach authorisation.';
 
--- Migration: 20260912220000_trusted_outbound_calls.sql
+-- Migration: 26091205_trusted_outbound_calls.sql
 alter table public.supplier_imports
   add column contact_source text not null default 'the business owner’s supplier record' check (length(contact_source) between 3 and 200),
   add column time_zone text not null default 'Australia/Melbourne' check (length(time_zone) between 3 and 80),
@@ -255,7 +258,7 @@ $$;
 revoke all on function public.create_recovery_with_policy(jsonb) from public,anon;
 grant execute on function public.create_recovery_with_policy(jsonb) to authenticated;
 
--- Migration: 20260912233000_live_transcript_quotes.sql
+-- Migration: 26091206_live_transcript_quotes.sql
 alter table public.supplier_calls
   add column transcript_json jsonb not null default '[]'::jsonb check (jsonb_typeof(transcript_json) = 'array'),
   add column provider_analysis jsonb not null default '{}'::jsonb check (jsonb_typeof(provider_analysis) = 'object');
@@ -269,7 +272,7 @@ alter table public.supplier_quotes
 alter table public.supplier_quotes add constraint supplier_quotes_call_id_key unique(call_id);
 comment on column public.supplier_quotes.needs_review is 'True when required quote facts are absent or model-extracted totals do not reconcile.';
 
--- Migration: 20260913003000_communications_and_orders.sql
+-- Migration: 26091301_communications_and_orders.sql
 alter table public.supplier_imports add column email text check (email is null or email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$');
 grant insert(email) on public.supplier_imports to authenticated;
 alter table public.supplier_quotes add constraint supplier_quotes_id_owner_key unique(id,owner_id);
@@ -328,7 +331,7 @@ create policy owner_reads_communications on public.communication_events for sele
 create policy owner_reads_purchase_orders on public.purchase_orders for select to authenticated using ((select auth.uid())=owner_id);
 comment on table public.purchase_orders is 'Purchase orders created only by an authenticated owner action after deterministic quote and supplier revalidation.';
 
--- Migration: 20260913062821_organization_workspaces.sql
+-- Migration: 26091302_organization_workspaces.sql
 create schema if not exists private;
 
 create table public.organizations (
@@ -574,7 +577,7 @@ $$;
 revoke all on function public.create_organization(text) from public,anon;
 grant execute on function public.create_organization(text) to authenticated;
 
--- Migration: 20260913070244_supplier_call_queue.sql
+-- Migration: 26091303_supplier_call_queue.sql
 create table public.supplier_call_queue (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -654,6 +657,17 @@ begin
     and status = 'processing'
     and lease_expires_at < now();
 
+  update public.supplier_call_queue
+  set status = 'uncertain',
+      worker_id = null,
+      last_error = 'The provider did not deliver a completion webhook before the call timeout',
+      completed_at = now(),
+      updated_at = now()
+  where organization_id = p_organization_id
+    and request_id = p_request_id
+    and status = 'calling'
+    and lease_expires_at < now();
+
   if exists (
     select 1 from public.supplier_call_queue
     where organization_id = p_organization_id
@@ -694,4 +708,603 @@ grant execute on function public.claim_next_supplier_call(uuid,uuid,uuid,integer
 comment on table public.supplier_call_queue is 'Durable, organisation-scoped supplier outreach queue. One call per request is active at a time.';
 comment on function public.claim_next_supplier_call(uuid,uuid,uuid,integer) is 'Atomically recovers expired claims and claims the next ready supplier call using SKIP LOCKED.';
 
+do $$
+declare
+  target_table text;
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach target_table in array array['supplier_call_queue','supplier_calls','supplier_quotes','procurement_requests'] loop
+      if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = target_table
+      ) then
+        execute format('alter publication supabase_realtime add table public.%I',target_table);
+      end if;
+    end loop;
+  end if;
+end;
+$$;
+
+-- Migration: 26091304_automated_sourcing_and_purchase.sql
+-- Discovery results can be imported as incomplete leads. They remain ineligible
+-- for contact until a valid ABN and phone are supplied, verified, and authorised.
+alter table public.suppliers alter column abn drop not null;
+alter table public.suppliers alter column phone drop not null;
+alter table public.suppliers add column website_url text;
+alter table public.suppliers add column discovery_evidence_id uuid references public.supplier_evidence(id) on delete set null;
+alter table public.suppliers add constraint suppliers_lead_contact_check
+  check (abn is not null or phone is not null or email is not null or website_url is not null);
+create unique index suppliers_organization_website_unique
+  on public.suppliers(organization_id,website_url)
+  where website_url is not null;
+create index suppliers_discovery_evidence_idx on public.suppliers(discovery_evidence_id)
+  where discovery_evidence_id is not null;
+
+alter table public.negotiation_policies
+  add column preauthorized_by uuid references auth.users(id),
+  add column preauthorized_at timestamptz,
+  add column authorization_snapshot jsonb;
+alter table public.negotiation_policies add constraint negotiation_policies_preauthorization_check
+  check (
+    not auto_purchase or (
+      preauthorized_by is not null
+      and preauthorized_at is not null
+      and jsonb_typeof(authorization_snapshot) = 'object'
+    )
+  );
+
+alter table public.purchase_orders
+  add column authorization_mode text not null default 'explicit'
+  check (authorization_mode in ('explicit','preauthorized'));
+create unique index purchase_orders_one_open_per_request
+  on public.purchase_orders(request_id)
+  where status <> 'cancelled';
+
+create or replace function public.create_procurement_request_with_policy(p_organization_id uuid,p_details jsonb)
+returns table(id uuid,status text)
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  new_id uuid;
+  budget_cents bigint;
+  payment_days integer;
+  deposit_bps integer;
+  automatic boolean;
+  actor_role text;
+begin
+  select role into actor_role
+  from public.organization_members
+  where organization_id = p_organization_id and user_id = (select auth.uid());
+  if actor_role is null then raise exception 'Organization membership is required'; end if;
+
+  budget_cents := round(((p_details->>'budget')::numeric) * 100);
+  payment_days := coalesce((p_details->>'minimumPaymentDays')::integer,14);
+  deposit_bps := round(coalesce((p_details->>'maximumDepositPercent')::numeric,0) * 100);
+  automatic := coalesce(p_details->>'purchaseMode','confirm') = 'preauthorized';
+  if automatic and actor_role not in ('owner','admin') then
+    raise exception 'Only an owner or administrator can pre-authorize purchasing';
+  end if;
+  if budget_cents <= 0 or payment_days not between 0 and 365 or deposit_bps not between 0 and 10000 then
+    raise exception 'Invalid negotiation policy';
+  end if;
+
+  insert into public.procurement_requests(organization_id,details)
+  values (p_organization_id,p_details)
+  returning procurement_requests.id into new_id;
+
+  insert into public.negotiation_policies(
+    organization_id,request_id,maximum_total_cents,minimum_payment_days,
+    maximum_deposit_bps,maximum_counteroffers,allow_substitutions,
+    allow_anonymous_market_anchor,auto_purchase,preauthorized_by,
+    preauthorized_at,authorization_snapshot
+  ) values (
+    p_organization_id,new_id,budget_cents,payment_days,deposit_bps,2,false,false,
+    automatic,case when automatic then (select auth.uid()) end,
+    case when automatic then now() end,
+    case when automatic then jsonb_build_object(
+      'requestId',new_id,
+      'maximumTotalCents',budget_cents,
+      'minimumPaymentDays',payment_days,
+      'maximumDepositBps',deposit_bps,
+      'allowSubstitutions',false,
+      'item',p_details->'item',
+      'quantity',p_details->'quantity',
+      'unit',p_details->'unit',
+      'deadline',p_details->'deadline',
+      'requiresHalal',p_details->'requiresHalal',
+      'cut',p_details->'cut',
+      'freshness',p_details->'freshness'
+    ) end
+  );
+  return query select new_id,'Ready to source'::text;
+end;
+$$;
+
+-- Atomically reserves the one purchase order allowed for a request. The Edge
+-- function performs the full deterministic revalidation immediately beforehand;
+-- this transaction repeats the critical price/authorization checks under lock.
+create function public.claim_purchase_order(
+  p_organization_id uuid,
+  p_quote_id uuid,
+  p_order_id uuid,
+  p_po_number text,
+  p_terms jsonb,
+  p_approved_by uuid,
+  p_authorization_mode text
+)
+returns table(id uuid,po_number text,status text,provider_email_id text,created boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  selected_quote public.supplier_quotes%rowtype;
+  selected_request public.procurement_requests%rowtype;
+  selected_policy public.negotiation_policies%rowtype;
+  existing_order public.purchase_orders%rowtype;
+begin
+  if (select auth.role()) <> 'service_role' then raise exception 'Service role is required'; end if;
+  if p_authorization_mode not in ('explicit','preauthorized') then raise exception 'Invalid authorization mode'; end if;
+
+  select * into selected_quote from public.supplier_quotes
+  where id = p_quote_id and organization_id = p_organization_id;
+  if not found then raise exception 'Quote was not found'; end if;
+
+  select * into selected_request from public.procurement_requests
+  where id = selected_quote.request_id and organization_id = p_organization_id
+  for update;
+  if not found then raise exception 'Request was not found'; end if;
+
+  select * into existing_order from public.purchase_orders
+  where request_id = selected_request.id and status <> 'cancelled';
+  if found then
+    if existing_order.quote_id <> p_quote_id then raise exception 'This request already has a purchase order'; end if;
+    return query select existing_order.id,existing_order.po_number,existing_order.status,existing_order.provider_email_id,false;
+    return;
+  end if;
+
+  select * into selected_policy from public.negotiation_policies
+  where request_id = selected_request.id and organization_id = p_organization_id;
+  if not found then raise exception 'Negotiation policy was not found'; end if;
+  if selected_quote.needs_review or not selected_quote.terms_confirmed then raise exception 'Quote terms require review'; end if;
+  if selected_quote.total_cents > selected_policy.maximum_total_cents then raise exception 'Quote exceeds the authorized maximum'; end if;
+  if p_authorization_mode = 'preauthorized' and (
+    not selected_policy.auto_purchase
+    or selected_policy.preauthorized_by is null
+    or selected_policy.preauthorized_by <> p_approved_by
+    or selected_policy.authorization_snapshot is null
+  ) then raise exception 'Stored pre-authorization is invalid'; end if;
+
+  insert into public.purchase_orders(
+    id,organization_id,request_id,supplier_id,quote_id,po_number,total_cents,
+    terms,approved_by,authorization_mode
+  ) values (
+    p_order_id,p_organization_id,selected_request.id,selected_quote.supplier_id,
+    selected_quote.id,p_po_number,selected_quote.total_cents,p_terms,p_approved_by,
+    p_authorization_mode
+  ) returning purchase_orders.* into existing_order;
+  return query select existing_order.id,existing_order.po_number,existing_order.status,existing_order.provider_email_id,true;
+end;
+$$;
+
+revoke all on function public.claim_purchase_order(uuid,uuid,uuid,text,jsonb,uuid,text) from public,anon,authenticated;
+grant execute on function public.claim_purchase_order(uuid,uuid,uuid,text,jsonb,uuid,text) to service_role;
+
+comment on table public.purchase_orders is 'Purchase orders reserved atomically after deterministic validation, using explicit approval or a stored request-scoped pre-authorization.';
+
+-- Migration: 26091305_harden_automated_purchase.sql
+drop index if exists public.suppliers_organization_website_unique;
+alter table public.suppliers add constraint suppliers_organization_website_key
+  unique (organization_id,website_url);
+
+-- A queue item may have multiple technical call attempts. The queue's call_id
+-- points at the current attempt; webhook updates additionally match that id.
+alter table public.supplier_calls drop constraint if exists supplier_calls_queue_item_id_key;
+create index supplier_calls_queue_item_idx on public.supplier_calls(queue_item_id)
+  where queue_item_id is not null;
+
+-- Requests and their immutable purchasing policies are created together. An
+-- ordinary member cannot retrofit auto-purchase onto an existing request.
+revoke insert on public.procurement_requests from authenticated;
+revoke insert,update,delete on public.negotiation_policies from authenticated;
+
+create or replace function public.create_procurement_request_with_policy(p_organization_id uuid,p_details jsonb)
+returns table(id uuid,status text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  new_id uuid;
+  budget_cents bigint;
+  payment_days integer;
+  deposit_bps integer;
+  automatic boolean;
+  actor_role text;
+begin
+  select role into actor_role
+  from public.organization_members
+  where organization_id = p_organization_id and user_id = (select auth.uid());
+  if actor_role is null then raise exception 'Organization membership is required'; end if;
+
+  budget_cents := round(((p_details->>'budget')::numeric) * 100);
+  payment_days := coalesce((p_details->>'minimumPaymentDays')::integer,14);
+  deposit_bps := round(coalesce((p_details->>'maximumDepositPercent')::numeric,0) * 100);
+  automatic := coalesce(p_details->>'purchaseMode','confirm') = 'preauthorized';
+  if automatic and actor_role not in ('owner','admin') then
+    raise exception 'Only an owner or administrator can pre-authorize purchasing';
+  end if;
+  if budget_cents <= 0 or payment_days not between 0 and 365 or deposit_bps not between 0 and 10000 then
+    raise exception 'Invalid negotiation policy';
+  end if;
+
+  insert into public.procurement_requests(organization_id,details)
+  values (p_organization_id,p_details)
+  returning procurement_requests.id into new_id;
+
+  insert into public.negotiation_policies(
+    organization_id,request_id,maximum_total_cents,minimum_payment_days,
+    maximum_deposit_bps,maximum_counteroffers,allow_substitutions,
+    allow_anonymous_market_anchor,auto_purchase,preauthorized_by,
+    preauthorized_at,authorization_snapshot
+  ) values (
+    p_organization_id,new_id,budget_cents,payment_days,deposit_bps,2,false,false,
+    automatic,case when automatic then (select auth.uid()) end,
+    case when automatic then now() end,
+    case when automatic then jsonb_build_object(
+      'requestId',new_id,
+      'maximumTotalCents',budget_cents,
+      'minimumPaymentDays',payment_days,
+      'maximumDepositBps',deposit_bps,
+      'allowSubstitutions',false,
+      'item',p_details->'item',
+      'quantity',p_details->'quantity',
+      'unit',p_details->'unit',
+      'deadline',p_details->'deadline',
+      'requiresHalal',p_details->'requiresHalal',
+      'cut',p_details->'cut',
+      'freshness',p_details->'freshness'
+    ) end
+  );
+  return query select new_id,'Ready to source'::text;
+end;
+$$;
+
+revoke all on function public.create_procurement_request_with_policy(uuid,jsonb) from public,anon;
+grant execute on function public.create_procurement_request_with_policy(uuid,jsonb) to authenticated;
+
+create or replace function public.claim_purchase_order(
+  p_organization_id uuid,
+  p_quote_id uuid,
+  p_order_id uuid,
+  p_po_number text,
+  p_terms jsonb,
+  p_approved_by uuid,
+  p_authorization_mode text
+)
+returns table(id uuid,po_number text,status text,provider_email_id text,created boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  selected_quote public.supplier_quotes%rowtype;
+  selected_request public.procurement_requests%rowtype;
+  selected_policy public.negotiation_policies%rowtype;
+  selected_supplier public.suppliers%rowtype;
+  selected_verification public.supplier_verifications%rowtype;
+  existing_order public.purchase_orders%rowtype;
+  selected_request_id uuid;
+  request_details jsonb;
+  quote_details jsonb;
+begin
+  if p_authorization_mode not in ('explicit','preauthorized') then raise exception 'Invalid authorization mode'; end if;
+
+  select q.request_id into selected_request_id from public.supplier_quotes q
+  where q.id = p_quote_id and q.organization_id = p_organization_id;
+  if not found then raise exception 'Quote was not found'; end if;
+
+  select r.* into selected_request from public.procurement_requests r
+  where r.id = selected_request_id and r.organization_id = p_organization_id
+  for update;
+  if not found then raise exception 'Request was not found'; end if;
+
+  select q.* into selected_quote from public.supplier_quotes q
+  where q.id = p_quote_id and q.organization_id = p_organization_id
+  for update;
+
+  select po.* into existing_order from public.purchase_orders po
+  where po.request_id = selected_request.id and po.status <> 'cancelled';
+  if found then
+    if existing_order.quote_id <> p_quote_id then raise exception 'This request already has a purchase order'; end if;
+    return query select existing_order.id,existing_order.po_number,existing_order.status,existing_order.provider_email_id,false;
+    return;
+  end if;
+
+  select policy.* into selected_policy from public.negotiation_policies policy
+  where policy.request_id = selected_request.id and policy.organization_id = p_organization_id;
+  if not found then raise exception 'Negotiation policy was not found'; end if;
+  select supplier.* into selected_supplier from public.suppliers supplier
+  where supplier.id = selected_quote.supplier_id and supplier.organization_id = p_organization_id;
+  if not found then raise exception 'Supplier was not found'; end if;
+  select verification.* into selected_verification from public.supplier_verifications verification
+  where verification.supplier_id = selected_quote.supplier_id and verification.organization_id = p_organization_id;
+  if not found then raise exception 'Supplier verification was not found'; end if;
+
+  request_details := selected_request.details;
+  quote_details := selected_quote.details;
+  if selected_request.status = 'Approved' then raise exception 'Request is already approved'; end if;
+  if not selected_supplier.authorised or selected_supplier.do_not_contact or selected_supplier.email is null then raise exception 'Supplier is not eligible for purchasing'; end if;
+  if not selected_verification.active or not selected_verification.name_matched or not selected_verification.contact_confirmed or selected_verification.checked_at < now() - interval '24 hours' or selected_verification.checked_at > now() then raise exception 'Fresh verified supplier evidence is required'; end if;
+  if selected_quote.needs_review or not selected_quote.terms_confirmed then raise exception 'Quote terms require review'; end if;
+  if selected_quote.total_cents > selected_policy.maximum_total_cents then raise exception 'Quote exceeds the authorized maximum'; end if;
+  if selected_quote.quantity < (request_details->>'quantity')::numeric then raise exception 'Quote quantity is insufficient'; end if;
+  if selected_quote.payment_days < selected_policy.minimum_payment_days then raise exception 'Payment terms are below the authorized minimum'; end if;
+  if selected_quote.deposit_bps > selected_policy.maximum_deposit_bps then raise exception 'Deposit exceeds the authorized maximum'; end if;
+  if quote_details->'available' is distinct from 'true'::jsonb or quote_details->'specificationConfirmed' is distinct from 'true'::jsonb then raise exception 'Availability and exact specification must be confirmed'; end if;
+  if coalesce((quote_details->>'isSubstitution')::boolean,false) and not selected_policy.allow_substitutions then raise exception 'Substitution is not authorized'; end if;
+  if nullif(quote_details->>'deliveryTime','') is null or nullif(request_details->>'deadline','') is null or (quote_details->>'deliveryTime')::timestamptz > (request_details->>'deadline')::timestamptz then raise exception 'Delivery misses or lacks the deadline'; end if;
+  if coalesce((request_details->>'requiresHalal')::boolean,false) and not exists (
+    select 1 from jsonb_array_elements_text(coalesce(quote_details->'certifications','[]'::jsonb)) certification
+    where certification ~* 'halal'
+  ) then raise exception 'Required halal certification is missing'; end if;
+  if p_authorization_mode = 'explicit' and not exists (
+    select 1 from public.organization_members
+    where organization_id = p_organization_id and user_id = p_approved_by and role in ('owner','admin')
+  ) then raise exception 'Owner or administrator approval is required'; end if;
+  if p_authorization_mode = 'preauthorized' and (
+    not selected_policy.auto_purchase
+    or selected_policy.preauthorized_by is null
+    or selected_policy.preauthorized_by <> p_approved_by
+    or selected_policy.authorization_snapshot is null
+  ) then raise exception 'Stored pre-authorization is invalid'; end if;
+
+  insert into public.purchase_orders(
+    id,organization_id,request_id,supplier_id,quote_id,po_number,total_cents,
+    terms,approved_by,authorization_mode
+  ) values (
+    p_order_id,p_organization_id,selected_request.id,selected_quote.supplier_id,
+    selected_quote.id,p_po_number,selected_quote.total_cents,p_terms,p_approved_by,
+    p_authorization_mode
+  ) returning purchase_orders.* into existing_order;
+  return query select existing_order.id,existing_order.po_number,existing_order.status,existing_order.provider_email_id,true;
+end;
+$$;
+
+revoke all on function public.claim_purchase_order(uuid,uuid,uuid,text,jsonb,uuid,text) from public,anon,authenticated;
+grant execute on function public.claim_purchase_order(uuid,uuid,uuid,text,jsonb,uuid,text) to service_role;
+
+do $$
+declare
+  target_table text;
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    foreach target_table in array array['suppliers','supplier_verifications','purchase_orders','agent_decisions'] loop
+      if not exists (
+        select 1 from pg_publication_tables
+        where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = target_table
+      ) then
+        execute format('alter publication supabase_realtime add table public.%I',target_table);
+      end if;
+    end loop;
+  end if;
+end;
+$$;
+
+-- Migration: 26091306_owner_completion_notifications.sql
+alter table public.communication_events drop constraint communication_events_channel_check;
+alter table public.communication_events add constraint communication_events_channel_check
+  check (channel in ('email','sms','voice'));
+
+alter table public.communication_events drop constraint communication_events_purpose_check;
+alter table public.communication_events add constraint communication_events_purpose_check
+  check (purpose in ('supplier_brief','owner_approval','purchase_order','owner_completion'));
+
+comment on table public.communication_events is 'Idempotent audit trail for supplier messages, approval requests, purchase orders, and final owner completion notifications.';
+
+-- Migration: 26091307_multi_member_orgs_and_request_creator.sql
+-- Multi-person organisations:
+--  * Every person has a profile (name, phone, email) readable by co-members so
+--    the workspace can show the whole team and Sarah can reach a specific person.
+--  * Every request records who started it. Sarah routes approval requests and
+--    completion calls only back to that person, never to the whole organisation.
+--  * An owner or administrator can add an existing account by email.
+
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text not null default '' check (char_length(trim(full_name)) <= 120),
+  phone text,
+  email text,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.profiles(id,full_name,email)
+select
+  id,
+  coalesce(nullif(trim(raw_user_meta_data->>'full_name'),''),split_part(email,'@',1)),
+  email
+from auth.users
+on conflict (id) do nothing;
+
+create function private.handle_new_user_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles(id,full_name,email)
+  values (
+    new.id,
+    coalesce(nullif(trim(new.raw_user_meta_data->>'full_name'),''),split_part(new.email,'@',1)),
+    new.email
+  );
+  return new;
+end;
+$$;
+
+revoke all on function private.handle_new_user_profile() from public,anon,authenticated;
+grant execute on function private.handle_new_user_profile() to supabase_auth_admin;
+
+create trigger on_auth_user_created_create_profile
+after insert on auth.users
+for each row execute function private.handle_new_user_profile();
+
+alter table public.profiles enable row level security;
+revoke all on public.profiles from anon,authenticated;
+grant select on public.profiles to authenticated;
+grant update on public.profiles to authenticated;
+grant all on public.profiles to service_role;
+
+create policy shared_members_read_profiles on public.profiles
+for select to authenticated
+using (exists (
+  select 1
+  from public.organization_members viewer
+  join public.organization_members subject on subject.organization_id = viewer.organization_id
+  where viewer.user_id = (select auth.uid())
+    and subject.user_id = profiles.id
+));
+
+create policy member_updates_own_profile on public.profiles
+for update to authenticated
+using ((select auth.uid()) = id)
+with check ((select auth.uid()) = id);
+
+-- negotiate_policies.organization_id was renamed from owner_id but its original
+-- foreign key constraint to auth.users was never dropped (unlike the other
+-- workspace tables), which blocked request creation for business organisations.
+alter table public.negotiation_policies drop constraint if exists negotiation_policies_owner_id_fkey;
+
+-- Track the organisation member who started each request so owner-facing
+-- notifications target exactly that person.
+alter table public.procurement_requests
+  add column created_by uuid references auth.users(id) on delete set null;
+
+create index procurement_requests_created_by_idx on public.procurement_requests(created_by);
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'negotiation_policies'
+      and column_name = 'preauthorized_by'
+  ) then
+    update public.procurement_requests r
+    set created_by = coalesce(
+      (select n.preauthorized_by from public.negotiation_policies n
+       where n.request_id = r.id and n.organization_id = r.organization_id),
+      (select o.personal_owner_id from public.organizations o
+       where o.id = r.organization_id and o.kind = 'personal')
+    )
+    where r.created_by is null;
+  else
+    update public.procurement_requests r
+    set created_by = (select o.personal_owner_id from public.organizations o
+      where o.id = r.organization_id and o.kind = 'personal')
+    where r.created_by is null;
+  end if;
+end;
+$$;
+
+create or replace function public.create_procurement_request_with_policy(p_organization_id uuid,p_details jsonb)
+returns table(id uuid,status text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  new_id uuid;
+  budget_cents bigint;
+  payment_days integer;
+  deposit_bps integer;
+  automatic boolean;
+  actor_role text;
+begin
+  select role into actor_role
+  from public.organization_members
+  where organization_id = p_organization_id and user_id = (select auth.uid());
+  if actor_role is null then raise exception 'Organization membership is required'; end if;
+
+  budget_cents := round(((p_details->>'budget')::numeric) * 100);
+  payment_days := coalesce((p_details->>'minimumPaymentDays')::integer,14);
+  deposit_bps := round(coalesce((p_details->>'maximumDepositPercent')::numeric,0) * 100);
+  automatic := coalesce(p_details->>'purchaseMode','confirm') = 'preauthorized';
+  if automatic and actor_role not in ('owner','admin') then
+    raise exception 'Only an owner or administrator can pre-authorize purchasing';
+  end if;
+  if budget_cents <= 0 or payment_days not between 0 and 365 or deposit_bps not between 0 and 10000 then
+    raise exception 'Invalid negotiation policy';
+  end if;
+
+  insert into public.procurement_requests(organization_id,details,created_by)
+  values (p_organization_id,p_details,(select auth.uid()))
+  returning procurement_requests.id into new_id;
+
+  insert into public.negotiation_policies(
+    organization_id,request_id,maximum_total_cents,minimum_payment_days,
+    maximum_deposit_bps,maximum_counteroffers,allow_substitutions,
+    allow_anonymous_market_anchor,auto_purchase,preauthorized_by,
+    preauthorized_at,authorization_snapshot
+  ) values (
+    p_organization_id,new_id,budget_cents,payment_days,deposit_bps,2,false,false,
+    automatic,case when automatic then (select auth.uid()) end,
+    case when automatic then now() end,
+    case when automatic then jsonb_build_object(
+      'requestId',new_id,
+      'maximumTotalCents',budget_cents,
+      'minimumPaymentDays',payment_days,
+      'maximumDepositBps',deposit_bps,
+      'allowSubstitutions',false,
+      'item',p_details->'item',
+      'quantity',p_details->'quantity',
+      'unit',p_details->'unit',
+      'deadline',p_details->'deadline',
+      'requiresHalal',p_details->'requiresHalal',
+      'cut',p_details->'cut',
+      'freshness',p_details->'freshness'
+    ) end
+  );
+  return query select new_id,'Ready to source'::text;
+end;
+$$;
+
+revoke all on function public.create_procurement_request_with_policy(uuid,jsonb) from public,anon;
+grant execute on function public.create_procurement_request_with_policy(uuid,jsonb) to authenticated;
+
+create function public.add_organization_member(p_organization_id uuid,p_email text,p_role text default 'member')
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  member_id uuid;
+  caller_role text;
+begin
+  if (select auth.uid()) is null then raise exception 'Authentication is required'; end if;
+  select role into caller_role
+  from public.organization_members
+  where organization_id = p_organization_id and user_id = (select auth.uid());
+  if caller_role is null or caller_role not in ('owner','admin') then
+    raise exception 'Only an owner or administrator can add members';
+  end if;
+  if p_role not in ('owner','admin','member') then raise exception 'Invalid role'; end if;
+  if length(trim(p_email)) not between 3 and 320 or nullif(trim(p_email),'') !~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' then
+    raise exception 'Enter a valid email address';
+  end if;
+  select id into member_id from auth.users where lower(email) = lower(trim(p_email));
+  if member_id is null then raise exception 'No SourcePilot account matches that email'; end if;
+  insert into public.organization_members(organization_id,user_id,role)
+  values (p_organization_id,member_id,p_role)
+  on conflict (organization_id,user_id) do update set role = excluded.role;
+  return member_id;
+end;
+$$;
+
+revoke all on function public.add_organization_member(uuid,text,text) from public,anon;
+grant execute on function public.add_organization_member(uuid,text,text) to authenticated;
 commit;

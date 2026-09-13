@@ -10,6 +10,7 @@ import './intake.css'
 import './registry.css'
 import './landing.css'
 import './polish.css'
+import './team.css'
 function Root() {
   const [started,setStarted] = useState(false)
   if (!started) return <LandingPage onStart={() => setStarted(true)}/>

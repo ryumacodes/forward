@@ -1,0 +1,27 @@
+.account-menu{max-height:min(70vh,620px);overflow:auto}
+.account-menu .team-block{border-bottom:1px solid #e8edf5;padding:8px 4px 10px;margin-bottom:4px}
+.team-block{display:flex;flex-direction:column;gap:8px}
+.team-heading{display:flex;align-items:center;gap:6px;padding:2px 5px 4px;color:#7a89a3}
+.team-heading strong{color:#17345f;font-size:11px;font-weight:650}
+.team-heading span{margin-left:auto;font-size:9px;color:#8b9ab4}
+.team-roster{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto}
+.team-member{display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:7px;background:#f6f9ff}
+.team-avatar{width:24px;height:24px;flex:0 0 24px;display:grid;place-items:center;border-radius:6px;background:#e1ecff;color:#31579c;font-size:9px;font-weight:700}
+.team-member-name{min-width:0;flex:1}
+.team-member-name strong,.team-member-name small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team-member-name strong{color:#17345f;font-size:10px;font-weight:650}
+.team-member-name small{color:#71819b;font-size:9px;margin-top:1px}
+.team-member em{font-style:normal;font-size:9px;color:#7a89a3;text-transform:uppercase;letter-spacing:.05em}
+.team-phone,.team-invite{display:flex;align-items:center;gap:7px;border:1px solid #e2e9f5;border-radius:8px;padding:6px 7px}
+.team-phone>svg,.team-invite>svg{color:#6681ab;flex:0 0 auto}
+.team-phone>span{min-width:0;flex:1}
+.team-phone small,.team-phone strong,.team-invite small,.team-invite strong{display:block}
+.team-phone small,.team-invite small{color:#71819b;font-size:8px}
+.team-phone strong,.team-invite strong{color:#17345f;font-size:10px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.team-phone input,.team-invite input{min-width:0;flex:1;border:1px solid #dbe4f2;border-radius:6px;background:#fff;color:#1a3a66;font-size:10px;padding:5px 7px}
+.team-phone input:focus,.team-invite input:focus{outline:2px solid #9cb9f3;outline-offset:-1px}
+.team-phone button,.team-invite button{width:26px;height:26px;flex:0 0 26px;display:grid;place-items:center;border-radius:6px;background:#164cc8;color:#fff}
+.team-phone button:hover:not(:disabled),.team-invite button:hover:not(:disabled){background:#103dab}
+.team-phone button:disabled,.team-invite button:disabled{opacity:.55}
+.team-note{display:flex;align-items:flex-start;gap:5px;color:#71819b;font-size:9px;line-height:1.45;padding:0 5px}
+.team-note svg{flex:0 0 auto;margin-top:1px;color:#6681ab}

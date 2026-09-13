@@ -17,7 +17,7 @@ The language model extracts details and prepares natural conversation. Determini
 
 ## Organisation workspaces
 
-Every account receives a personal organisation during signup, named from the user’s profile or email. Users can also create business organisations and switch between organisations they belong to. Procurement requests, suppliers, verification evidence, calls, quotes, policies, messages, decisions, and purchase orders are all scoped by `organization_id`; membership-based RLS prevents access from outside the organisation.
+Every account receives a personal organisation during signup, named from the user’s profile or email. Users can also create business organisations and switch between organisations they belong to. Procurement requests, suppliers, verification evidence, calls, quotes, policies, messages, decisions, and purchase orders are all scoped by `organization_id`; membership-based RLS prevents access from outside the organisation. Organisations can hold several people: an owner or administrator adds another account by email. Every request records who started it, and Sarah routes approval requests and completion calls only back to that person — never to the whole team.
 
 ## Current features
 
@@ -32,6 +32,7 @@ Every account receives a personal organisation during signup, named from the use
 - Durable, sequential ElevenLabs SIP calling queues with batch selection, atomic claims, retries, cancellation, live status, pre-dispatch trust checks, and per-call policy snapshots
 - HMAC-verified post-call transcript ingestion and supplier-only structured quote extraction
 - Audited supplier email, owner approval SMS, atomically reserved purchase orders, and idempotent owner completion calls with SMS plus AgentMail fallback
+- Multi-person organisations with per-profile contact details and request starters, so owner-facing notifications reach the exact person who started the request
 - Quote comparison and supplier ranking
 - Price and payment-term negotiation guardrails
 - Sentiment, patience, and negotiation-readiness signals
@@ -89,7 +90,7 @@ Database migrations live in `supabase/migrations`. Register for the free ABN Loo
 
 The sample proximity view uses cached suburb centroids and Haversine straight-line distance, not exact address geocoding or route distance. OpenStreetMap tiles load only when the owner opens the map and retain visible contributor attribution. Production geocoding must be server-side, cached, rate-limited, provider-configurable, and record its source and precision.
 
-Enable the ElevenLabs voicemail-detection system tool on the owner-notification agent. Busy, declined, and no-answer outcomes arrive as call-initiation failures; voicemail is detected from that system tool in the signed post-call transcript. `OWNER_NOTIFICATION_EMAIL` is optional: when blank, SourcePilot uses the authorising account’s Supabase Auth email. AgentMail is used only for owner fallback notifications; Resend remains responsible for supplier briefs and purchase orders.
+Enable the ElevenLabs voicemail-detection system tool on the owner-notification agent. Busy, declined, and no-answer outcomes arrive as call-initiation failures; voicemail is detected from that system tool in the signed post-call transcript. Approval and completion notifications go to the person who started each request, using their profile phone/email and falling back to their Supabase Auth email or the `OWNER_APPROVAL_PHONE` / `OWNER_NOTIFICATION_EMAIL` secrets. AgentMail is used only for owner fallback notifications; Resend remains responsible for supplier briefs and purchase orders.
 
 ## Commands
 

@@ -4,6 +4,7 @@ import type { Offer } from '../../features/requests/data'
 import type { ImportedSupplier } from '../../features/suppliers/verification'
 
 export type Organization = { id: string; name: string; kind: 'personal' | 'business' }
+export type OrgMember = { userId: string; role: 'owner' | 'admin' | 'member'; fullName: string; email: string; phone?: string }
 export type CallQueueItem = { id:string;requestId:string;supplierId:string;supplierName:string;status:'queued'|'processing'|'calling'|'completed'|'blocked'|'failed'|'uncertain'|'cancelled';priority:number;attemptCount:number;maxAttempts:number;availableAt:string;callId?:string;lastError?:string;createdAt:string;updatedAt:string }
 
 export async function loadWorkspace(organizationId?:string) {
@@ -13,7 +14,7 @@ export async function loadWorkspace(organizationId?:string) {
   const organization=(organizations.data.find(item=>item.id===organizationId)??organizations.data.find(item=>item.kind==='business')??organizations.data[0]) as Organization|undefined
   if(!organization)throw new Error('Your account does not have an organisation workspace.')
   const [requests,suppliers,quotes,calls,queue] = await Promise.all([
-    supabase.from('procurement_requests').select('id,details,status').eq('organization_id',organization.id).order('created_at',{ascending:false}),
+    supabase.from('procurement_requests').select('id,details,status,created_by').eq('organization_id',organization.id).order('created_at',{ascending:false}),
     supabase.from('suppliers').select('id,name,abn,phone,email,website_url,discovery_evidence_id,created_at,authorised,supplier_verifications(active,legal_name,gst_registered,name_matched,contact_confirmed,checked_at)').eq('organization_id',organization.id).order('created_at',{ascending:false}),
     supabase.from('supplier_quotes').select('id,request_id,supplier_id,call_id,total_cents,quantity,payment_days,deposit_bps,terms_confirmed,details,needs_review').eq('organization_id',organization.id).order('created_at',{ascending:false}),
     supabase.from('supplier_calls').select('id,transcript_json,created_at,completed_at').eq('organization_id',organization.id).order('created_at',{ascending:false}),
@@ -27,10 +28,14 @@ export async function loadWorkspace(organizationId?:string) {
   const supplierMap=new Map(suppliers.data.map(row=>[row.id,row]))
   const requestMap=new Map(requests.data.map(row=>[row.id,row]))
   const callMap=new Map(calls.data.map(row=>[row.id,row]))
+  const members=await loadMembers(organization.id)
+  const profileMap=new Map(members.map(member=>[member.userId,member]))
+  const creatorName=(userId:string|null|undefined)=>userId?profileMap.get(userId)?.fullName||undefined:undefined
   return {
     organization,
     organizations:organizations.data as Organization[],
-    requests: requests.data.map(row=>({...row.details,id:row.id,status:row.status}) as ProcurementRequest),
+    members,
+    requests: requests.data.map(row=>({...row.details,id:row.id,status:row.status,createdById:row.created_by??undefined,createdBy:creatorName(row.created_by)}) as ProcurementRequest),
     suppliers: suppliers.data.map(row=>{
       const joined=Array.isArray(row.supplier_verifications)?row.supplier_verifications[0]:row.supplier_verifications
       const verification=joined?{active:joined.active,legalName:joined.legal_name,gstRegistered:Boolean(joined.gst_registered),businessNames:[],state:null,postcode:null,entityType:null,statusEffectiveFrom:null,nameMatched:joined.name_matched,contactConfirmed:joined.contact_confirmed,checkedAt:joined.checked_at,source:'ABR' as const,evidenceUrl:`https://abr.business.gov.au/ABN/View?abn=${row.abn}`} : undefined
@@ -64,4 +69,42 @@ export async function saveSupplier(supplier:ImportedSupplier,organizationId:stri
   if(!supabase)return
   const {error}=await supabase.from('suppliers').insert({id:supplier.id,organization_id:organizationId,name:supplier.name,abn:supplier.abn,phone:supplier.phone,email:supplier.email||null})
   if(error)throw new Error(error.code==='23505'?'This ABN is already in your supplier list.':error.message)
+}
+
+async function loadMembers(organizationId:string):Promise<OrgMember[]>{
+  if(!supabase)return []
+  const {data:rows,error}=await supabase.from('organization_members').select('organization_id,user_id,role').eq('organization_id',organizationId)
+  if(error)throw error
+  const userIds=[...new Set((rows||[]).map(row=>row.user_id))]
+  const profileMap=new Map<string,{full_name?:string|null;email?:string|null;phone?:string|null}>()
+  if(userIds.length){
+    const {data:profiles,error:profileError}=await supabase.from('profiles').select('id,full_name,email,phone').in('id',userIds)
+    if(profileError)throw profileError
+    for(const profile of profiles||[])profileMap.set(profile.id,profile)
+  }
+  return (rows||[]).map(row=>({
+    userId:row.user_id,
+    role:row.role,
+    fullName:profileMap.get(row.user_id)?.full_name||'',
+    email:profileMap.get(row.user_id)?.email||'',
+    phone:profileMap.get(row.user_id)?.phone||undefined,
+  }))
+}
+
+export async function addOrganizationMember(organizationId:string,email:string):Promise<OrgMember>{
+  if(!supabase)throw new Error('Supabase is not configured.')
+  const {data,error}=await supabase.rpc('add_organization_member',{p_organization_id:organizationId,p_email:email,p_role:'member'}).single()
+  if(error)throw new Error(error.message)
+  const member=await loadMembers(organizationId)
+  const found=member.find(item=>item.userId===data as string)
+  if(!found)throw new Error('That account was added but could not be loaded.')
+  return found
+}
+
+export async function updateMyProfilePhone(phone:string){
+  if(!supabase)throw new Error('Supabase is not configured.')
+  const {data:{user}}=await supabase.auth.getUser()
+  if(!user)throw new Error('Sign in again to update your contact details.')
+  const {error}=await supabase.from('profiles').update({phone:phone.trim()||null}).eq('id',user.id)
+  if(error)throw new Error(error.message)
 }
