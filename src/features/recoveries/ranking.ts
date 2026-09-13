@@ -8,8 +8,11 @@ export function paymentChecks(offer: Offer, request: Recovery) {
   }
 }
 export function canPurchase(offer: Offer, request: Recovery) {
-  return request.purchaseMode === 'preauthorised' && offer.authorised && offer.abnVerified &&
-    Object.values({...validateOffer(offer, request), ...paymentChecks(offer, request)}).every(Boolean)
+  void offer
+  void request
+  // Automatic commitment is intentionally disabled. A qualifying quote still
+  // requires a separate, explicit owner action in the procurement endpoint.
+  return false
 }
 export function rankOffers(offers: Offer[], request: Recovery) {
   return offers.map(offer => {

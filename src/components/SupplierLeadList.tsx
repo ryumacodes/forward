@@ -14,8 +14,8 @@ export function SupplierLeadList() {
     <section className="supplier-leads">
       <div className="section-header">
         <div>
-          <h2>ABN-confirmed supplier leads</h2>
-          <p>Public information gathered for Melbourne hospitality sourcing. Review before authorising contact.</p>
+          <h2>Researched example supplier leads</h2>
+          <p>Public information gathered for the demo dataset. These are not live discovery or current ABR results.</p>
         </div>
         <span className="demo-badge">{supplierLeads.length} researched</span>
       </div>
@@ -33,7 +33,7 @@ export function SupplierLeadList() {
                 <p><MapPin size={13}/>{lead.location}</p>
                 <div className="lead-tags">{lead.categories.slice(0, 4).map(category => <span key={category}>{category}</span>)}</div>
               </div>
-              <span className="lead-status"><ShieldCheck size={15}/> ABN active<small>Authorisation required</small></span>
+              <span className="lead-status"><ShieldCheck size={15}/> Example evidence<small>Live checks required</small></span>
             </button>
             {expanded === lead.id && (
               <div className="lead-detail">
@@ -52,7 +52,7 @@ export function SupplierLeadList() {
                   <a href={lead.website} target="_blank" rel="noreferrer">Supplier website <ExternalLink size={13}/></a>
                   {lead.evidenceUrls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">Evidence {index + 1} <ExternalLink size={13}/></a>)}
                 </div>
-                <p className="lead-caveat">ABN checked 12 Sep 2026. Website claims have not been independently certified. Confirm stock, price, delivery, certifications, contact preference and terms before use.</p>
+                <p className="lead-caveat">Snapshot researched 12 Sep 2026. Re-run live ABR and web checks; confirm stock, price, delivery, certifications, contact preference and terms before use.</p>
               </div>
             )}
           </article>

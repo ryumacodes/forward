@@ -106,6 +106,7 @@ export function confirmIntake(intake: NormalizedIntake): string {
   const parts: string[] = []
   if (intake.item) parts.push([intake.quantity, intake.unit, intake.cut, intake.item, intake.halal === false ? 'non-halal' : intake.halal ? 'halal' : null, intake.freshness === 'either' ? null : intake.freshness].filter(Boolean).join(' '))
   if (intake.deadline) parts.push(`delivered by ${intake.deadline}`)
+  if (intake.deliveryLocation) parts.push(`to ${intake.deliveryLocation}`)
   if (intake.budgetCents != null) parts.push(`for up to $${(intake.budgetCents / 100).toFixed(2)}`)
   if (intake.paymentDays != null) parts.push(`net ${intake.paymentDays} days`)
   if (intake.depositBps != null) parts.push(`${intake.depositBps / 100}% deposit`)

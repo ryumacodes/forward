@@ -10,7 +10,7 @@ export type IntakeAnswerInput = {
 function json(value: unknown) { return JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v) }
 
 export const intakeClientTools = {
-  clarify_intake_details: (parameters: {item?: string; quantity?: number; unit?: string; deadline?: string; halal?: boolean | null; cut?: string; freshness?: string; budgetCents?: number; paymentDays?: number} | undefined) => {
+  clarify_intake_details: (parameters: {item?: string; quantity?: number; unit?: string; deadline?: string; deliveryLocation?: string; halal?: boolean | null; cut?: string; freshness?: string; budgetCents?: number; paymentDays?: number} | undefined) => {
     const args = parameters ?? {}
     const halal = typeof args.halal === 'boolean' ? args.halal : null
     const freshness = args.freshness === 'fresh' || args.freshness === 'frozen' || args.freshness === 'either' ? args.freshness : null
@@ -19,6 +19,7 @@ export const intakeClientTools = {
       quantity: args.quantity ?? null,
       unit: args.unit ?? null,
       deadline: args.deadline ?? null,
+      deliveryLocation: args.deliveryLocation ?? null,
       halal,
       cut: args.cut ?? null,
       freshness,
@@ -55,6 +56,7 @@ function intakeBase(partial?: Partial<NormalizedIntake>): NormalizedIntake {
     unit: partial?.unit ?? null,
     budgetCents: partial?.budgetCents ?? null,
     deadline: partial?.deadline ?? null,
+    deliveryLocation: partial?.deliveryLocation ?? null,
     paymentDays: partial?.paymentDays ?? null,
     depositBps: partial?.depositBps ?? null,
     halal: partial?.halal ?? null,

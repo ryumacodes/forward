@@ -1,0 +1,13 @@
+.intake-review { border: 1px solid #dbe5f4; background: #f7f9fd; border-radius: 8px; padding: 14px; margin: 4px 0 18px; }
+.intake-review-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.intake-review-head > span { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 650; }
+.intake-review-head .review-ready { color: #3e8060; }
+.intake-review-head .review-needed { color: #9a6b30; }
+.intake-review-head > strong { font-size: 11px; color: #526783; }
+.intake-review > p { font-size: 11px; color: #71819a; line-height: 1.5; margin: 9px 0 0; }
+.intake-review details { margin-top: 11px; border-top: 1px solid #e1e7f0; padding-top: 10px; }
+.intake-review summary { font-size: 10px; color: #164cc8; cursor: pointer; }
+.intake-review details span { display: block; font-size: 10px; color: #667791; line-height: 1.55; margin-top: 7px; }
+.intake-review details b { color: #405574; margin-right: 4px; }
+.renormalize { margin: -6px 0 12px; }
+@media(max-width:767px){.intake-review{padding:13px}.intake-review-head{align-items:flex-start}.intake-review>p,.intake-review details span{font-size:12px}.renormalize{min-height:44px}}
