@@ -63,7 +63,16 @@ await new Promise<void>((resolve, reject) => {
 })
 
 try {
-  await Promise.all([send('Runtime.enable'), send('Log.enable'), send('Network.enable')])
+  await Promise.all([send('Page.enable'), send('Runtime.enable')])
+  await send('Page.navigate', {url: 'about:blank'})
+  const pageDeadline = Date.now() + 5_000
+  while (Date.now() < pageDeadline) {
+    const state = await send('Runtime.evaluate', {expression: 'document.readyState', returnByValue: true})
+    if ((state.result as {value?: string} | undefined)?.value === 'complete') break
+    await Bun.sleep(100)
+  }
+  consoleErrors.length = 0
+  await Promise.all([send('Log.enable'), send('Network.enable')])
   const expression = `
     new Promise((resolve, reject) => {
       const socket = new WebSocket('wss://api.elevenlabs.io/v1/convai/conversation?agent_id=' + encodeURIComponent(${JSON.stringify(agentId)}));

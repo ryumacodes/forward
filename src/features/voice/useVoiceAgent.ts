@@ -7,6 +7,7 @@ import type { ElevenLabsOrbAdapter } from 'orb-ui/adapters'
 export function useVoiceAgent(onTranscript: (text: string) => void) {
   const agentId = import.meta.env.VITE_ELEVENLABS_AGENT_ID?.trim()
   const [signal, setSignal] = useState<OrbSignal>({state:'idle'})
+  const [ready, setReady] = useState(false)
   const adapterRef = useRef<ElevenLabsOrbAdapter | null>(null)
   const callback = useRef(onTranscript)
   const alive = useRef(true)
@@ -16,6 +17,7 @@ export function useVoiceAgent(onTranscript: (text: string) => void) {
     alive.current = true
     let unsubscribe: (() => void) | undefined
     let cancelled = false
+    setReady(false)
     if (agentId) {
       void Promise.all([import('@elevenlabs/client'), import('orb-ui/adapters')]).then(([{Conversation}, {createElevenLabsAdapter}]) => {
         if (cancelled) return
@@ -24,7 +26,8 @@ export function useVoiceAgent(onTranscript: (text: string) => void) {
         }})
         adapterRef.current = adapter
         unsubscribe = adapter.subscribe(next => { if (alive.current) setSignal(next) })
-      }).catch(() => { if (!cancelled) setSignal({state:'error'}) })
+        if (alive.current) setReady(true)
+      }).catch(() => { if (!cancelled) { setReady(false); setSignal({state:'error'}) } })
     }
     return () => { cancelled = true; alive.current = false; unsubscribe?.(); const adapter = adapterRef.current; adapterRef.current = null; void adapter?.stop().catch(() => {}) }
   }, [agentId])
@@ -38,5 +41,5 @@ export function useVoiceAgent(onTranscript: (text: string) => void) {
     } catch { if (alive.current) setSignal({state:'error'}) }
     finally { busy.current = false }
   }
-  return {configured: Boolean(agentId), signal, toggle}
+  return {configured: Boolean(agentId), ready, signal, toggle}
 }

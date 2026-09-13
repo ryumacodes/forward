@@ -48,7 +48,10 @@ socket.onmessage = message => {
   }
   if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') {
     const args = event.params.args as Array<{value?: unknown; description?: string}> | undefined
-    browserErrors.push((args ?? []).map(arg => String(arg.value ?? arg.description ?? '')).join(' '))
+    const stack = event.params.stackTrace as {callFrames?: Array<{url?: string; lineNumber?: number; columnNumber?: number}>} | undefined
+    const frame = stack?.callFrames?.[0]
+    const location = frame?.url ? ` at ${safeUrl(frame.url)}:${(frame.lineNumber ?? 0) + 1}:${(frame.columnNumber ?? 0) + 1}` : ''
+    browserErrors.push(`${(args ?? []).map(arg => String(arg.value ?? arg.description ?? '')).join(' ')}${location}`)
   }
   if (event.method === 'Runtime.exceptionThrown') {
     const details = event.params?.exceptionDetails as {text?: string; exception?: {description?: string}} | undefined
@@ -92,7 +95,10 @@ async function waitFor(expression: string, description: string, timeoutMs = 20_0
 
 const clickButton = async (pattern: string) => evaluate<boolean>(`(() => {
   const pattern = new RegExp(${JSON.stringify(pattern)}, 'i');
-  const button = [...document.querySelectorAll('button')].find(element => pattern.test(element.textContent?.trim() ?? ''));
+  const button = [...document.querySelectorAll('button')].find(element => {
+    const accessibleName = element.getAttribute('aria-label') ?? element.innerText.trim();
+    return pattern.test(accessibleName);
+  });
   if (!button) return false;
   button.click();
   return true;
@@ -109,7 +115,11 @@ const fillLabel = async (labelText: string, value: string) => evaluate<boolean>(
 })()`)
 
 try {
-  await Promise.all([send('Page.enable'), send('Runtime.enable'), send('Log.enable'), send('Network.enable')])
+  await Promise.all([send('Page.enable'), send('Runtime.enable')])
+  await send('Page.navigate', {url: 'about:blank'})
+  await waitFor(`document.readyState === 'complete'`, 'the clean CDP page')
+  browserErrors.length = 0
+  await Promise.all([send('Log.enable'), send('Network.enable')])
   await send('Browser.grantPermissions', {origin: appUrl, permissions: ['audioCapture']})
   await send('Page.navigate', {url: appUrl})
   await waitFor(`document.readyState === 'complete'`, 'the app document')
@@ -128,14 +138,18 @@ try {
   if (!await clickButton('Talk to Sarah|Start talking')) throw new Error('The Talk to Sarah button was not found.')
   await waitFor(`document.body.innerText.includes('Start conversation')`, 'the Sarah dialog')
   if (!await clickButton('^Start conversation$')) throw new Error('The Start conversation button was not found.')
-  await waitFor(`/ElevenLabs conversation · (listening|speaking|thinking)/.test(document.body.innerText)`, 'a live ElevenLabs conversation', 30_000)
-  const liveState = await evaluate<string>(`document.body.innerText.match(/ElevenLabs conversation · (listening|speaking|thinking)/)?.[1] ?? ''`)
+  await waitFor(`document.body.innerText.includes('ElevenLabs conversation · listening')`, 'a live ElevenLabs conversation', 30_000)
+  await Bun.sleep(5_000)
+  const liveState = 'listening'
   if (!await clickButton('End conversation')) throw new Error('The End conversation button was not found.')
   await waitFor(`document.body.innerText.includes('ElevenLabs conversation · idle')`, 'the stopped voice session', 15_000)
 
   const errors = [...new Set(browserErrors)]
   console.log(JSON.stringify({workspaceEntered: true, loginRequired, voiceConnected: true, liveState, consoleErrors: errors}, null, 2))
   if (errors.length) throw new Error(`CDP browser errors:\n${errors.join('\n')}`)
+} catch (error) {
+  if (browserErrors.length) console.error(JSON.stringify({consoleErrors: [...new Set(browserErrors)]}, null, 2))
+  throw error
 } finally {
   for (const request of pending.values()) request.reject(new Error('CDP connection closed.'))
   socket.close()
