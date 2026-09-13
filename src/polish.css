@@ -35,10 +35,11 @@ body { background: #f3f6fb; }
 .main-shell { width: calc(100% - 248px); margin-left: 248px; }
 .brand { color: #fff; font-size: 24px; letter-spacing: -1.1px; }
 .brand-mark { width: 31px; height: 33px; padding-left: 0; display: grid; place-items: center; background: var(--blue-700); color: #fff; border: 1px solid #ffffff25; border-radius: 9px; box-shadow: inset 0 1px #ffffff20, 0 8px 24px #020a2166; line-height: 1; }
-.brand-symbol { position: relative; isolation: isolate; overflow: hidden; }
-.brand-symbol svg { position: relative; z-index: 2; width: 61%; height: 61%; transform: rotate(42deg); filter: drop-shadow(0 2px 4px #02081745); }
-.brand-symbol::before,.brand-symbol::after { content: ''; position: absolute; z-index: 1; left: 1px; bottom: 7px; width: 15px; height: 1.5px; border-radius: 999px; background: #9fc0ff; transform: rotate(-45deg); transform-origin: left center; opacity: .75; }
-.brand-symbol::after { left: 5px; bottom: 3px; width: 11px; opacity: .42; }
+.brand-symbol { position: relative; isolation: isolate; overflow: visible; }
+.brand-symbol img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 5px 10px #02081755); user-select: none; }
+.brand-symbol::before,.brand-symbol::after { display: none; }
+.brand-mark { width: 35px; height: 35px; margin-right: 9px; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.landing-mark { width: 31px; height: 31px; margin-right: 9px; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .brand-period { color: #ff5961; }
 .workspace { margin: 32px 0 30px; padding: 12px; background: #ffffff0a; border-color: #ffffff16; border-radius: 11px; box-shadow: inset 0 1px #ffffff08; }
 .workspace:hover { background: #ffffff0f; }
