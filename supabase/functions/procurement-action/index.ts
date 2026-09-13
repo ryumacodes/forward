@@ -1,5 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
 import { normalizeAustralianPhone } from '../../../src/features/voice/trustPolicy.ts'
+import { completionSummary } from '../../../src/features/communications/completion.ts'
+
+declare const EdgeRuntime:{waitUntil(promise:Promise<unknown>):void}
 
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'}
 
@@ -69,7 +72,10 @@ async function issuePurchaseOrder(client:ReturnType<typeof createClient>,organiz
   const {data:claim,error:claimError}=await client.rpc('claim_purchase_order',{p_organization_id:organizationId,p_quote_id:context.quote.id,p_order_id:proposedId,p_po_number:proposedNumber,p_terms:terms,p_approved_by:approvedBy,p_authorization_mode:authorizationMode}).single()
   if(claimError)throw claimError
   const order=claim as {id:string;po_number:string;status:string;provider_email_id?:string}
-  if(order.status==='sent')return json({status:order.status,purchaseOrder:{id:order.id,poNumber:order.po_number,status:order.status},providerId:order.provider_email_id})
+  if(order.status==='sent'){
+    EdgeRuntime.waitUntil(notifyOwnerOfCompletion(client,{organizationId,context,poNumber:order.po_number}).catch(error=>console.error('Unable to notify owner of completed purchase order',error)))
+    return json({status:order.status,purchaseOrder:{id:order.id,poNumber:order.po_number,status:order.status},providerId:order.provider_email_id})
+  }
   const id=order.id,poNumber=order.po_number
   const details=context.request.details as Record<string,unknown>,business=Deno.env.get('CALLING_BUSINESS_NAME')||'Customer'
   const specification=[details.requiresHalal===true?'halal':details.requiresHalal===false?'no halal requirement':'',details.freshness,details.cut,details.item].filter(Boolean).join(' ')
@@ -82,6 +88,7 @@ async function issuePurchaseOrder(client:ReturnType<typeof createClient>,organiz
     await client.from('procurement_requests').update({status:'Approved'}).eq('id',context.request.id).eq('organization_id',organizationId)
     await client.from('supplier_call_queue').update({status:'cancelled',last_error:'Request fulfilled by purchase order',lease_expires_at:null,updated_at:new Date().toISOString()}).eq('organization_id',organizationId).eq('request_id',context.request.id).in('status',['queued','processing','blocked','failed','uncertain'])
     await client.from('agent_decisions').insert({organization_id:organizationId,request_id:context.request.id,supplier_id:context.supplier.id,decision_type:'purchase',outcome:'allow',reasons:[authorizationMode==='preauthorized'?'Stored request pre-authorization and every deterministic purchase rule passed':'Explicit owner action and every deterministic purchase rule passed'],policy_snapshot:context.policy||{}})
+    EdgeRuntime.waitUntil(notifyOwnerOfCompletion(client,{organizationId,context,poNumber}).catch(error=>console.error('Unable to notify owner of completed purchase order',error)))
     return json({status:'sent',providerId:payload.providerId,purchaseOrder:{id,poNumber,status:'sent'}})
   }
   return sent
@@ -130,6 +137,34 @@ async function createEvent(client:ReturnType<typeof createClient>,row:Record<str
   return {event:existing,created:false}
 }
 
+async function notifyOwnerOfCompletion(client:ReturnType<typeof createClient>,input:{organizationId:string;context:Awaited<ReturnType<typeof quoteContext>>;poNumber:string}){
+  const phone=normalizeAustralianPhone(Deno.env.get('OWNER_APPROVAL_PHONE')||'')
+  const details=input.context.request.details as Record<string,unknown>
+  const quoteDetails=input.context.quote.details as Record<string,unknown>
+  const summary=completionSummary({poNumber:input.poNumber,supplierName:input.context.supplier.name,item:String(details.item),quantity:Number(input.context.quote.quantity),unit:String(details.unit),totalCents:Number(input.context.quote.total_cents),deliveryTime:String(quoteDetails.deliveryTime),paymentDays:Number(input.context.quote.payment_days),depositBps:Number(input.context.quote.deposit_bps)})
+  if(details.confirmationChannel==='sms'){
+    await sendSms(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,body:summary,key:`owner-completion-sms/${input.context.quote.id}`,purpose:'owner_completion'})
+    return
+  }
+  try{await sendCompletionCall(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,summary})}
+  catch(error){
+    console.error('Owner completion call unavailable; falling back to SMS',error)
+    await sendSms(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,body:summary,key:`owner-completion-fallback/${input.context.quote.id}`,purpose:'owner_completion'})
+  }
+}
+
+async function sendCompletionCall(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId:string;to:string;summary:string}){
+  const apiKey=Deno.env.get('ELEVENLABS_API_KEY'),agentId=Deno.env.get('ELEVENLABS_OWNER_NOTIFICATION_AGENT_ID'),phoneNumberId=Deno.env.get('ELEVENLABS_PHONE_NUMBER_ID')
+  if(!apiKey||!agentId||!phoneNumberId)throw new Error('Owner completion calling is not configured.')
+  const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'voice',purpose:'owner_completion',recipient:input.to,status:'queued',payload:{summary:input.summary},idempotency_key:`owner-completion-call/${input.quoteId}`})
+  if(!created.created)return
+  const prompt='You are Sarah, the SourcePilot AI procurement assistant. This is a completion-only call to the business owner. State the supplied completion summary clearly, including supplier, exact item, total, delivery, payment days, deposit, and that no automatic payment occurred. Answer only brief questions supported by the supplied summary. Do not request approval, negotiate, change the order, or make new commitments. End politely.'
+  const response=await fetch('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call',{method:'POST',headers:{'xi-api-key':apiKey,'Content-Type':'application/json'},body:JSON.stringify({agent_id:agentId,agent_phone_number_id:phoneNumberId,to_number:input.to,conversation_initiation_client_data:{dynamic_variables:{completion_summary:input.summary},conversation_config_override:{agent:{first_message:input.summary,prompt:{prompt}}}}})})
+  const body=await response.json().catch(()=>({})) as {success?:boolean;message?:string;conversation_id?:string}
+  if(!response.ok||!body.success||!body.conversation_id){const message=body.message||`ElevenLabs returned ${response.status}`;await client.from('communication_events').update({status:'failed',provider_error:message}).eq('id',created.event.id);throw new Error(message)}
+  await client.from('communication_events').update({status:'sent',provider_id:body.conversation_id,sent_at:new Date().toISOString()}).eq('id',created.event.id)
+}
+
 async function sendEmail(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId?:string;purpose:'supplier_brief'|'purchase_order';to:string;subject:string;text:string;key:string}){
   const apiKey=Deno.env.get('RESEND_API_KEY'),from=Deno.env.get('RESEND_FROM_EMAIL')
   if(!apiKey||!from)throw new Error('Resend email secrets are incomplete.')
@@ -143,10 +178,10 @@ async function sendEmail(client:ReturnType<typeof createClient>,input:{organizat
   return json({status:'sent',providerId:body.id})
 }
 
-async function sendSms(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId:string;to:string;body:string;key:string}){
+async function sendSms(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId:string;to:string;body:string;key:string;purpose?:'owner_approval'|'owner_completion'}){
   const sid=Deno.env.get('TWILIO_ACCOUNT_SID'),token=Deno.env.get('TWILIO_AUTH_TOKEN'),from=Deno.env.get('TWILIO_SMS_FROM')
   if(!sid||!token||!from)throw new Error('Twilio SMS secrets are incomplete.')
-  const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'sms',purpose:'owner_approval',recipient:input.to,status:'queued',payload:{body:input.body},idempotency_key:input.key})
+  const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'sms',purpose:input.purpose||'owner_approval',recipient:input.to,status:'queued',payload:{body:input.body},idempotency_key:input.key})
   if(!created.created)return json({status:created.event.status,providerId:created.event.provider_id})
   const form=new URLSearchParams({To:input.to,From:normalizeAustralianPhone(from),Body:input.body})
   const response=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${btoa(`${sid}:${token}`)}`,'Content-Type':'application/x-www-form-urlencoded'},body:form})

@@ -15,6 +15,7 @@ import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyE
 import { canPurchase } from '../src/features/requests/ranking'
 import { checkSupplies, allSupplyLeads } from '../src/features/supplycheck/engine'
 import { createDemoSeed } from '../src/features/requests/data'
+import { completionSummary } from '../src/features/communications/completion'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -78,6 +79,14 @@ test('a qualifying quote can use request-scoped pre-authorisation',()=>{
 test('live discovery profile score changes with request priorities',()=>{
  const evidence={semanticScore:.82,confidence:.9,locality:'Sydney NSW',location:'Melbourne VIC',products:['commercial chicken']}
  expect(scoreDiscoveredEvidence(evidence,discoveryProfiles[1])).not.toBe(scoreDiscoveredEvidence(evidence,discoveryProfiles[2]))
+})
+test('completion notice includes delivery and payment facts without claiming supplier acceptance',()=>{
+ const summary=completionSummary({poNumber:'SP-1',supplierName:'Example Foods',item:'chicken breast',quantity:30,unit:'kg',totalCents:30000,deliveryTime:'14 Sep, 7:00 am',paymentDays:14,depositBps:0})
+ expect(summary).toContain('AUD 300.00')
+ expect(summary).toContain('payment in 14 days')
+ expect(summary).toContain('deposit 0%')
+ expect(summary).toContain('supplier acceptance is still pending')
+ expect(summary).toContain('no automatic payment was made')
 })
 test('contact policy blocks unverified, repeated and out-of-hours calls',()=>{
  const result=checkContactPolicy({abnVerified:false,authorised:true,optedOut:false,localHour:18,attemptsToday:2,businessName:'Cafe',callbackNumber:'03 9000 0000'})
@@ -155,7 +164,7 @@ test('clarify pipeline asks halal then cut once quantity is known',()=>{
  expect(third.missingFields).not.toContain('cut')
 })
 test('confirmation recaps every captured detail before extraction',()=>{
- let intake=previewNormalize('voice_call','I want 30 kg chicken by 8pm sunday for 500$ or less')
+ let intake=previewNormalize('voice_call','I want 30 kg chicken delivered to 25 Flinders Lane by 8pm sunday for 500$ or less, net 14 days and no deposit')
  intake=applyResponse(intake,'halal','Yes halal')
  intake=applyResponse(intake,'cut','whole')
  intake=applyResponse(intake,'freshness','frozen')
@@ -166,6 +175,9 @@ test('confirmation recaps every captured detail before extraction',()=>{
  expect(script).toContain('halal')
  expect(script).toContain('whole')
  expect(script).toContain('frozen')
+ expect(script).toContain('25 Flinders Lane')
+ expect(script).toContain('14 days')
+ expect(script).toContain('0%')
  expect(script).toContain('Is that right')
  expect(intake.missingFields).toHaveLength(0)
 })

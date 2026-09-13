@@ -5,12 +5,13 @@ SourcePilot is a mobile-first voice procurement agent for Australian small busin
 ## How it works
 
 1. The owner speaks or types a procurement request.
-2. SourcePilot converts it into a structured brief with quantities, delivery timing, budget, and payment preferences.
+2. SourcePilot asks only for missing details, then confirms the exact item, quantity, delivery address and deadline, all-in budget, substitutions, payment period, and deposit cap before sourcing starts.
 3. The supplier list is filtered to businesses with a confirmed ABN and owner authorisation.
 4. Suppliers are contacted by voice first, with SMS or email available for follow-up.
 5. Quotes are normalised and ranked by total cost, availability, delivery, payment terms, reliability, and call sentiment.
 6. SourcePilot negotiates within explicit price and payment-term limits.
 7. A request can either require a separate owner approval or store an owner/admin pre-authorisation. Pre-authorised requests may issue one purchase order automatically only when every exact product, supplier, total, quantity, delivery, and payment rule passes. SourcePilot never initiates payment.
+8. Once the purchase order is sent, SourcePilot calls the owner with the result and payment terms, falling back to SMS when configured calling is unavailable. It clearly says supplier acceptance is still pending.
 
 The language model extracts details and prepares natural conversation. Deterministic application rules control supplier eligibility, negotiation limits, ranking, disclosure, and purchase approval.
 
@@ -29,7 +30,7 @@ Every account receives a personal organisation during signup, named from the use
 - Live ABR verification and a separate owner-authorisation gate
 - Durable, sequential ElevenLabs SIP calling queues with batch selection, atomic claims, retries, cancellation, live status, pre-dispatch trust checks, and per-call policy snapshots
 - HMAC-verified post-call transcript ingestion and supplier-only structured quote extraction
-- Audited supplier email, owner approval SMS, and atomically reserved purchase orders using explicit approval or request-scoped pre-authorisation
+- Audited supplier email, owner approval SMS, atomically reserved purchase orders, and idempotent owner completion calls with SMS fallback
 - Quote comparison and supplier ranking
 - Price and payment-term negotiation guardrails
 - Sentiment, patience, and negotiation-readiness signals
@@ -74,7 +75,7 @@ Link the Supabase CLI to your project, then apply the migrations and deploy the 
 
 ```bash
 supabase db push
-supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna OPENAI_DISCOVERY_MODEL=gpt-5.6-terra OPENAI_EMBEDDING_MODEL=text-embedding-3-small ABR_AUTH_GUID=your_abr_guid ELEVENLABS_API_KEY=your_key ELEVENLABS_AGENT_ID=your_agent_id ELEVENLABS_PHONE_NUMBER_ID=your_sip_phone_id ELEVENLABS_CALLBACK_NUMBER=+61390000000 ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret CALLING_BUSINESS_NAME="Your Business" RESEND_API_KEY=your_key RESEND_FROM_EMAIL=procurement@example.com TWILIO_ACCOUNT_SID=your_sid TWILIO_AUTH_TOKEN=your_token TWILIO_SMS_FROM=+61... OWNER_APPROVAL_PHONE=+61... APP_BASE_URL=https://your-production-url.example
+supabase secrets set OPENAI_API_KEY=your_key OPENAI_EXTRACTION_MODEL=gpt-5.6-luna OPENAI_DISCOVERY_MODEL=gpt-5.6-terra OPENAI_EMBEDDING_MODEL=text-embedding-3-small ABR_AUTH_GUID=your_abr_guid ELEVENLABS_API_KEY=your_key ELEVENLABS_AGENT_ID=your_supplier_agent_id ELEVENLABS_OWNER_NOTIFICATION_AGENT_ID=your_owner_notification_agent_id ELEVENLABS_PHONE_NUMBER_ID=your_sip_phone_id ELEVENLABS_CALLBACK_NUMBER=+61390000000 ELEVENLABS_WEBHOOK_SECRET=your_webhook_secret CALLING_BUSINESS_NAME="Your Business" RESEND_API_KEY=your_key RESEND_FROM_EMAIL=procurement@example.com TWILIO_ACCOUNT_SID=your_sid TWILIO_AUTH_TOKEN=your_token TWILIO_SMS_FROM=+61... OWNER_APPROVAL_PHONE=+61... APP_BASE_URL=https://your-production-url.example
 supabase functions deploy normalize-intake
 supabase functions deploy verify-abn
 supabase functions deploy discover-suppliers
@@ -106,4 +107,4 @@ data/                  Researched supplier lead exports
 
 ## Prototype status
 
-The repository implements connected intake, ABR verification, importable evidence-backed web discovery, request-specific buying profiles, trust-gated ElevenLabs outbound queues, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, and purchase orders backed by explicit approval or stored request-scoped pre-authorisation. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by an owner or administrator before SourcePilot can contact or buy from them.
+The repository implements gap-driven intake clarification, ABR verification, importable evidence-backed web discovery, request-specific buying profiles, trust-gated ElevenLabs outbound queues, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, purchase orders backed by explicit approval or stored request-scoped pre-authorisation, and final owner notification with the recorded delivery and payment terms. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by an owner or administrator before SourcePilot can contact or buy from them.

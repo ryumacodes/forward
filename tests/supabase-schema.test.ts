@@ -14,6 +14,7 @@ const migrations=[
   '20260913070244_supplier_call_queue.sql',
   '20260913071652_automated_sourcing_and_purchase.sql',
   '20260913073802_harden_automated_purchase.sql',
+  '20260913075049_owner_completion_notifications.sql',
 ]
 
 test('organisation membership isolates procurement data and protected evidence',async()=>{
@@ -74,6 +75,8 @@ test('organisation membership isolates procurement data and protected evidence',
     await db.query('update public.suppliers set authorised=true,authorised_at=now() where id=$1',[supplierId])
     await db.query('insert into public.supplier_verifications(supplier_id,organization_id,active,legal_name,name_matched,contact_confirmed,checked_at) values ($1,$2,true,$3,true,true,now())',[supplierId,userA,'Example'])
     const quote=(await db.query<{id:string}>('insert into public.supplier_quotes(organization_id,request_id,supplier_id,total_cents,quantity,payment_days,deposit_bps,terms_confirmed,details,needs_review) values ($1,$2,$3,30000,30,14,0,true,$4,false) returning id',[userA,requestId,supplierId,{available:true,specificationConfirmed:true,isSubstitution:false,deliveryTime:'2026-09-14T07:00:00+10:00',certifications:[]}])).rows[0]
+    await db.query('insert into public.communication_events(organization_id,request_id,supplier_id,quote_id,channel,purpose,recipient,payload,idempotency_key) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)',[userA,requestId,supplierId,quote.id,'voice','owner_completion','+61400000000',{summary:'PO issued'},'completion-test'])
+    expect((await db.query('select id from public.communication_events where purpose=$1',['owner_completion'])).rows).toHaveLength(1)
     const automaticQuote=(await db.query<{id:string}>('insert into public.supplier_quotes(organization_id,request_id,supplier_id,total_cents,quantity,payment_days,deposit_bps,terms_confirmed,details,needs_review) values ($1,$2,$3,30000,30,14,0,true,$4,false) returning id',[userA,automatic.rows[0].id,supplierId,{available:true,specificationConfirmed:true,isSubstitution:true,deliveryTime:'2026-09-14T07:00:00+10:00',certifications:[]}])).rows[0]
     const queueItem=(await db.query<{id:string}>('insert into public.supplier_call_queue(organization_id,request_id,supplier_id,created_by) values ($1,$2,$3,$1) returning id',[userA,requestId,supplierId])).rows[0]
     await db.query('insert into public.supplier_calls(organization_id,request_id,supplier_id,queue_item_id) values ($1,$2,$3,$4),($1,$2,$3,$4)',[userA,requestId,supplierId,queueItem.id])

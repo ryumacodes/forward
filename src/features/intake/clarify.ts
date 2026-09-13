@@ -13,13 +13,16 @@ export function isMeatItem(item: string | null | undefined) {
   return !!item && MEAT_RE.test(item)
 }
 
-export function missingFieldsOf(intake: Pick<NormalizedIntake,'item'|'quantity'|'unit'|'budgetCents'|'deadline'|'halal'|'cut'|'freshness'>): string[] {
+export function missingFieldsOf(intake: Pick<NormalizedIntake,'item'|'quantity'|'unit'|'budgetCents'|'deadline'|'deliveryLocation'|'paymentDays'|'depositBps'|'halal'|'cut'|'freshness'>): string[] {
   const meat = isMeatItem(intake.item)
   const missing: string[] = []
   if (!intake.item) missing.push('item')
   if (intake.quantity == null || !intake.unit) missing.push('quantity')
   if (intake.budgetCents == null) missing.push('budget')
   if (!intake.deadline) missing.push('deadline')
+  if (!intake.deliveryLocation) missing.push('deliveryLocation')
+  if (intake.paymentDays == null) missing.push('payment')
+  if (intake.depositBps == null) missing.push('deposit')
   if (meat && intake.halal == null) missing.push('halal')
   if (meat && !intake.cut) missing.push('cut')
   if (meat && intake.freshness == null) missing.push('freshness')
@@ -37,8 +40,10 @@ export function clarifyQuestions(intake: NormalizedIntake | Partial<NormalizedIn
   if (meat && !intake.cut) { elicit({field:'cut', prompt:`Whole ${item}, or particular cuts?`, options:['Whole','Breast','Thigh','Drumsticks','Mixed cuts']}) }
   if (meat && intake.freshness == null) { elicit({field:'freshness', prompt:'Fresh or frozen?', options:['Fresh','Frozen','Either']}) }
   if (!intake.deadline) { elicit({field:'deadline', prompt:'When is the latest you need it delivered?'}) }
+  if (!intake.deliveryLocation) { elicit({field:'deliveryLocation', prompt:'What is the delivery address or area?'}) }
   if (intake.budgetCents == null) { elicit({field:'budget', prompt:'Is there a budget cap we should aim under?'}) }
   if (intake.paymentDays == null) { elicit({field:'payment', prompt:'Any preferred payment terms, like net 30?'}) }
+  if (intake.depositBps == null) { elicit({field:'deposit', prompt:'What is the maximum deposit you will accept?',options:['No deposit','10%','25%','50%']}) }
   return questions.slice(0, limits.haltAfter)
 }
 
@@ -73,9 +78,20 @@ export function applyResponse(intake: NormalizedIntake, field: string, response:
       if (normalized) { next.deadline = normalized; mark('deadline') }
       break
     }
+    case 'deliveryLocation':
+      next.deliveryLocation=response.trim().slice(0,200)
+      mark('deliveryLocation')
+      break
     case 'payment': {
       const match = /\b(?:net\s*)?(\d{1,3})\s*days?\b/i.exec(response)
       if (match) { next.paymentDays = Number(match[1]); mark('payment') }
+      else if (/\b(due on delivery|no preference|none|any terms?)\b/i.test(response)) { next.paymentDays = 0; mark('payment') }
+      break
+    }
+    case 'deposit': {
+      const match=/\b(\d{1,3}(?:\.\d{1,2})?)\s*%/.exec(response)
+      if(/\b(no|zero|none)\b/i.test(response)){next.depositBps=0;mark('deposit')}
+      else if(match&&Number(match[1])<=100){next.depositBps=Math.round(Number(match[1])*100);mark('deposit')}
       break
     }
     case 'halal': {

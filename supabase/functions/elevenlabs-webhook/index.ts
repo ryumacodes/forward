@@ -17,6 +17,8 @@ Deno.serve(async request=>{
     const conversationId=event.data?.conversation_id
     if(!conversationId)return json({error:'Conversation ID is missing.'},400)
     const expectedAgent=Deno.env.get('ELEVENLABS_AGENT_ID')
+    const ownerNotificationAgent=Deno.env.get('ELEVENLABS_OWNER_NOTIFICATION_AGENT_ID')
+    if(ownerNotificationAgent&&event.data.agent_id===ownerNotificationAgent)return json({status:'ignored',kind:'owner_completion'})
     if(expectedAgent&&event.data.agent_id&&event.data.agent_id!==expectedAgent)return json({error:'Unexpected agent.'},401)
     const supabaseUrl=Deno.env.get('SUPABASE_URL'),serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     if(!supabaseUrl||!serviceKey)throw new Error('Supabase function secrets are incomplete.')

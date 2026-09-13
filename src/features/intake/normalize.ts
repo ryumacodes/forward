@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase/client'
 import { previewNormalize, type IntakeSource, type NormalizedIntake } from './schema'
+import { missingFieldsOf } from './clarify'
 
 export type IntakeNormalization = {
   model: string
@@ -27,5 +28,7 @@ export async function normalizeProcurementIntake(source: IntakeSource, text: str
   const { data, error } = await supabase.functions.invoke('normalize-intake', { body: { source, text: cleaned } })
   if (error) throw new Error(`Could not structure the request: ${error.message}`)
   if (!data || !isNormalizedIntake(data.result)) throw new Error('The intake service returned an invalid result. Please try again.')
-  return { model: String(data.model || 'unknown'), mode: 'live', result: data.result }
+  const result = data.result
+  result.missingFields = missingFieldsOf(result)
+  return { model: String(data.model || 'unknown'), mode: 'live', result }
 }

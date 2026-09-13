@@ -76,7 +76,7 @@ export function previewNormalize(source: IntakeSource, text: string, now = new D
   const freshness:Freshness=freshnessMatch?(freshnessMatch[1].toLowerCase()==='chilled'?'either':freshnessMatch[1].toLowerCase() as 'fresh'|'frozen'):null
   const meat=Boolean(itemMatch&&/meat|chicken|beef|lamb|goat|poultry|veal|duck|turkey/i.test(itemMatch[1]))
   const sentimentCue=stop?'stop':frustrated?'frustrated':timePressure?'time_pressure':'neutral'
-  const missingFields=[...(!itemMatch?['item']:[]),...(!quantityMatch?['quantity']:[]),...(!budgetMatch?['budget']:[]),...(!deadline?['deadline']:[]),...(meat&&halal===null?['halal']:[]),...(meat&&!cut?['cut']:[]),...(meat&&!freshness?['freshness']:[])]
+  const missingFields=[...(!itemMatch?['item']:[]),...(!quantityMatch?['quantity']:[]),...(!budgetMatch?['budget']:[]),...(!deadline?['deadline']:[]),...(!locationMatch?['deliveryLocation']:[]),...(!paymentMatch?['payment']:[]),...(!depositMatch&&!noDeposit?['deposit']:[]),...(meat&&halal===null?['halal']:[]),...(meat&&!cut?['cut']:[]),...(meat&&!freshness?['freshness']:[])]
   const evidence:NormalizedIntake['evidence']=[]
   if(itemMatch)evidence.push({field:'item',text:itemMatch[0]})
   if(quantityMatch)evidence.push({field:'quantity',text:quantityMatch[0]})

@@ -10,7 +10,7 @@ export type IntakeAnswerInput = {
 function json(value: unknown) { return JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v) }
 
 export const intakeClientTools = {
-  clarify_intake_details: (parameters: {item?: string; quantity?: number; unit?: string; deadline?: string; deliveryLocation?: string; halal?: boolean | null; cut?: string; freshness?: string; budgetCents?: number; paymentDays?: number} | undefined) => {
+  clarify_intake_details: (parameters: {item?: string; quantity?: number; unit?: string; deadline?: string; deliveryLocation?: string; halal?: boolean | null; cut?: string; freshness?: string; budgetCents?: number; paymentDays?: number;depositBps?:number} | undefined) => {
     const args = parameters ?? {}
     const halal = typeof args.halal === 'boolean' ? args.halal : null
     const freshness = args.freshness === 'fresh' || args.freshness === 'frozen' || args.freshness === 'either' ? args.freshness : null
@@ -25,6 +25,7 @@ export const intakeClientTools = {
       freshness,
       budgetCents: args.budgetCents ?? null,
       paymentDays: args.paymentDays ?? null,
+      depositBps:args.depositBps??null,
     }
     const questions = clarifyQuestions(intake)
     if (questions.length === 0) return json({ok:true, allClear:true, note:'No gaps remain. Confirm the details back to the caller.'})
