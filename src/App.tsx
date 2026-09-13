@@ -1,8 +1,8 @@
 import { supabase } from './lib/supabase/client'
 import { useOwner } from './lib/supabase/AuthGate'
 import { loadWorkspace, saveRecovery, saveSupplier } from './lib/supabase/workspace'
-import { useEffect, useState } from 'react'
-import { Mic, Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, Clock3, FileText, LayoutDashboard, Mail, MapPin, MessageSquare, MoreHorizontal, Package, Phone, Plus, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Mic, Activity, ArrowDownLeft, ArrowLeft, ArrowRight, ArrowUpRight, Check, CheckCheck, ChevronDown, ChevronRight, CircleHelp, Clock3, FileText, LayoutDashboard, LogOut, Mail, MapPin, MessageSquare, MoreHorizontal, Package, Phone, Plus, RotateCcw, Search, ShieldCheck, Sparkles, Users, X } from 'lucide-react'
 import { SupplierImport } from './components/SupplierImport'
 import { NegotiationTools } from './components/NegotiationTools'
 import { DiscoveryPolicy } from './components/DiscoveryPolicy'
@@ -32,13 +32,30 @@ export default function App() {
   const [modal, setModal] = useState(false)
   const [transcript, setTranscript] = useState<Offer | null>(null)
   const [notice, setNotice] = useState('')
+  const [accountMenu, setAccountMenu] = useState(false)
+  const [accountBusy, setAccountBusy] = useState(false)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
+  const accountTriggerRef = useRef<HTMLButtonElement>(null)
   const request = recoveries.find(r => r.id === selected) ?? {...initialRecoveries[0],id:'',item:'No recovery selected',status:'Ready to source' as const}
   const requestOffers=workspaceOffers.filter(offer=>!offer.requestId||offer.requestId===request.id)
   const seeded = !supabase && request.id === 'REC-024'
   const approved = request.status === 'Approved'
   const filtered = recoveries.filter(r => `${r.item} ${r.id}`.toLowerCase().includes(query.toLowerCase()))
-  const nav = (next: Page) => { setPage(next); setQuery(''); setMobileDetail(false); window.scrollTo({top:0}) }
+  const nav = (next: Page) => { setPage(next); setQuery(''); setMobileDetail(false); setAccountMenu(false); window.scrollTo({top:0}) }
   const notify = (message: string) => setNotice(message)
+  const showWorkspaceGuide = () => {
+    notify(supabase?'Create a recovery, authorise an ABN-verified supplier, compare evidence-backed quotes, then explicitly approve any purchase order.':'Create a recovery and explore the clearly labelled sample workflow. Configure Supabase to connect live services.')
+    setAccountMenu(false)
+  }
+  const signOut = async () => {
+    if (!supabase) return
+    setAccountBusy(true)
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      notify(error.message || 'Could not sign out. Please try again.')
+      setAccountBusy(false)
+    }
+  }
   const today = new Intl.DateTimeFormat('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).format(new Date())
   useEffect(() => {
     if(!supabase || !owner)return
@@ -46,6 +63,24 @@ export default function App() {
     loadWorkspace().then(data=>{if(cancelled)return;setRecoveries(data.recoveries);setImportedSuppliers(data.suppliers);setLiveOffers(data.offers);setSelected(data.recoveries[0]?.id ?? '')}).catch(error=>{if(!cancelled)setLoadError(error.message || 'Could not load your workspace.')}).finally(()=>{if(!cancelled)setLoading(false)})
     return ()=>{cancelled=true}
   },[owner?.id])
+  useEffect(() => {
+    if (!accountMenu) return
+    const closeOutside = (event: PointerEvent) => {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountMenu(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setAccountMenu(false)
+      accountTriggerRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    accountMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [accountMenu])
   if(loading || loadError)return <div className="auth-screen"><h2>{loadError?'Workspace unavailable':'Loading your workspace…'}</h2>{loadError && <><p role="alert">{loadError}</p><p>Check the Supabase connection and apply the database migration.</p><button className="secondary" onClick={()=>window.location.reload()}>Retry</button></>}</div>
   return <div className="app-shell">
     <aside className="sidebar">
@@ -53,7 +88,7 @@ export default function App() {
       <div className="workspace"><span className="workspace-logo">F</span><div><strong>{supabase ? 'Your business' : 'Flinders Kitchen'}</strong><small>Business workspace</small></div><ChevronDown size={15}/></div>
       <span className="nav-label">WORKSPACE</span>
       <nav>{([[LayoutDashboard,'Overview'],[Package,'Recoveries'],[Users,'Suppliers'],[Phone,'Call activity']] as const).map(([Icon, label]) => <button key={label} aria-current={page === label ? 'page' : undefined} className={page === label ? 'nav-item active' : 'nav-item'} onClick={() => nav(label)}><Icon size={19}/>{label}{label === 'Recoveries' && <span className="nav-count">{recoveries.filter(r => r.status !== 'Approved').length}</span>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="agent-status"><span className="status-dot"/><strong>Your agent is ready</strong><p>Calls first. You stay in control.</p><div><Phone size={14}/><span/><MessageSquare size={14}/><span/><Mail size={14}/></div></div><button className="help" onClick={() => notify(supabase?'Create a recovery, authorise an ABN-verified supplier, compare evidence-backed quotes, then explicitly approve any purchase order.':'Create a recovery and explore the clearly labelled sample workflow. Configure Supabase to connect live services.')}><CircleHelp size={18}/> Help & getting started <ArrowUpRight size={15}/></button><div className="account"><span className="avatar">JL</span><div><strong>{owner?.email ?? 'Jamie Lee'}</strong><small>Business owner</small></div><MoreHorizontal size={19}/></div></div>
+      <div className="sidebar-bottom"><div className="agent-status"><span className="status-dot"/><strong>Your agent is ready</strong><p>Calls first. You stay in control.</p><div><Phone size={14}/><span/><MessageSquare size={14}/><span/><Mail size={14}/></div></div><button className="help" onClick={showWorkspaceGuide}><CircleHelp size={18}/> Help & getting started <ArrowUpRight size={15}/></button><div className="account" ref={accountMenuRef}><span className="avatar">JL</span><div className="account-identity"><strong>{owner?.email ?? 'Jamie Lee'}</strong><small>Business owner</small></div><button ref={accountTriggerRef} className="account-menu-trigger" aria-label={accountMenu ? 'Close account menu' : 'Open account menu'} aria-haspopup="menu" aria-expanded={accountMenu} aria-controls="account-menu" onClick={() => setAccountMenu(open => !open)}><MoreHorizontal size={19}/></button>{accountMenu && <div className="account-menu" id="account-menu" role="menu" aria-label="Account options"><div className="account-menu-heading"><strong>{supabase ? 'Connected workspace' : 'Demo workspace'}</strong><span>{supabase ? 'Your account and session' : 'Safe to explore and reset'}</span></div><button role="menuitem" onClick={showWorkspaceGuide}><CircleHelp size={17}/><span><strong>Workspace guide</strong><small>See how procurement flows</small></span></button>{supabase && owner ? <button role="menuitem" disabled={accountBusy} onClick={signOut}><LogOut size={17}/><span><strong>{accountBusy ? 'Signing out…' : 'Sign out'}</strong><small>End this workspace session</small></span></button> : <button role="menuitem" onClick={() => window.location.reload()}><RotateCcw size={17}/><span><strong>Restart demo data</strong><small>Return to the sample workspace</small></span></button>}</div>}</div></div>
     </aside>
     <div className="main-shell"><header className="topbar"><div className="breadcrumb">Workspace <ChevronRight size={14}/> <span>{page}</span></div><div className="topbar-right"><span className="demo-badge">{supabase ? 'Connected workspace' : 'Demo workspace'}</span><span className="top-date">{today}</span></div></header>
     <main className={mobileDetail ? 'mobile-detail-active' : ''}>
