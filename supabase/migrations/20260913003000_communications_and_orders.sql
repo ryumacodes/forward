@@ -1,6 +1,7 @@
 alter table public.supplier_imports add column email text check (email is null or email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$');
 grant insert(email) on public.supplier_imports to authenticated;
 alter table public.supplier_quotes add constraint supplier_quotes_id_owner_key unique(id,owner_id);
+revoke update(status) on public.recovery_requests from authenticated;
 
 create table public.communication_events (
   id uuid primary key default gen_random_uuid(),

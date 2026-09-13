@@ -37,7 +37,7 @@ Deno.serve(async request=>{
     if(!apiKey||!agentId||!phoneNumberId)throw new Error('ElevenLabs outbound telephony secrets are incomplete.')
     const toNumber=normalizeAustralianPhone(supplier.phone)
     normalizeAustralianPhone(callbackNumber)
-    const product=requiredText(details.item,'product'),unit=requiredText(details.unit,'unit'),deliveryLocation=requiredText(details.location,'delivery location'),deadline=requiredText(details.deadline,'deadline')
+    const item=requiredText(details.item,'product'),product=[details.requiresHalal===true?'halal':details.requiresHalal===false?'no halal requirement':'',details.freshness,details.cut,item].filter(Boolean).join(' '),unit=requiredText(details.unit,'unit'),deliveryLocation=requiredText(details.location,'delivery location'),deadline=requiredText(details.deadline,'deadline')
     const quantity=requiredNumber(details.quantity,'quantity')
     const firstMessage=trustedProductIntroduction({businessName,callbackNumber,product,quantity,unit,contactSource:supplier.contact_source})
     const prompt=outboundTrustPrompt({businessName,callbackNumber,product,quantity,unit,deliveryLocation,deadline,maximumTotalCents:snapshot.maximumTotalCents,minimumPaymentDays:snapshot.minimumPaymentDays,maximumDepositBps:snapshot.maximumDepositBps,maximumCounteroffers:snapshot.maximumCounteroffers,allowSubstitutions:snapshot.allowSubstitutions})
