@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
-import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature, type TranscriptTurn } from '../../../src/features/voice/webhook.ts'
+import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature, voicemailDetected, type TranscriptTurn } from '../../../src/features/voice/webhook.ts'
 import { completeQueueItem, dispatchNextSupplierCall, retryQueueItemAfterInitiationFailure } from '../_shared/call-queue.ts'
+import { sendMissedOwnerCallFallback } from '../_shared/owner-notifications.ts'
 
 declare const EdgeRuntime:{waitUntil(promise:Promise<unknown>):void}
 
@@ -18,11 +19,24 @@ Deno.serve(async request=>{
     if(!conversationId)return json({error:'Conversation ID is missing.'},400)
     const expectedAgent=Deno.env.get('ELEVENLABS_AGENT_ID')
     const ownerNotificationAgent=Deno.env.get('ELEVENLABS_OWNER_NOTIFICATION_AGENT_ID')
-    if(ownerNotificationAgent&&event.data.agent_id===ownerNotificationAgent)return json({status:'ignored',kind:'owner_completion'})
-    if(expectedAgent&&event.data.agent_id&&event.data.agent_id!==expectedAgent)return json({error:'Unexpected agent.'},401)
     const supabaseUrl=Deno.env.get('SUPABASE_URL'),serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     if(!supabaseUrl||!serviceKey)throw new Error('Supabase function secrets are incomplete.')
     const client=createClient(supabaseUrl,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}})
+    if(ownerNotificationAgent&&event.data.agent_id===ownerNotificationAgent){
+      const {data:notification}=await client.from('communication_events').select('id,organization_id,request_id,supplier_id,quote_id,recipient,payload').eq('provider_id',conversationId).eq('channel','voice').eq('purpose','owner_completion').maybeSingle()
+      if(!notification)return json({error:'Owner notification call is not registered.'},404)
+      const voicemail=event.type==='post_call_transcription'&&voicemailDetected(Array.isArray(event.data.transcript)?event.data.transcript:[])
+      if(event.type!=='call_initiation_failure'&&!voicemail)return json({status:'received',kind:'owner_completion',outcome:event.type==='post_call_transcription'?'answered':'ignored'})
+      const reason=voicemail?'voicemail detected':event.data.failure_reason||'call initiation failed'
+      await client.from('communication_events').update({status:'failed',provider_error:reason}).eq('id',notification.id)
+      const payload=notification.payload as {summary?:unknown;ownerEmail?:unknown}
+      const summary=typeof payload.summary==='string'?payload.summary:''
+      const email=typeof payload.ownerEmail==='string'?payload.ownerEmail:''
+      if(!summary)return json({error:'Owner completion summary is missing.'},409)
+      const fallback=await sendMissedOwnerCallFallback(client,{organizationId:notification.organization_id,requestId:notification.request_id,supplierId:notification.supplier_id,quoteId:notification.quote_id,phone:notification.recipient,email,summary,reason})
+      return json({status:'received',kind:'owner_completion',outcome:'not_answered',fallback})
+    }
+    if(expectedAgent&&event.data.agent_id&&event.data.agent_id!==expectedAgent)return json({error:'Unexpected agent.'},401)
     const {data:call}=await client.from('supplier_calls').select('id,organization_id,request_id,supplier_id,queue_item_id').eq('provider_conversation_id',conversationId).single()
     if(!call)return json({error:'Conversation is not registered.'},404)
     if(event.type==='call_initiation_failure'){

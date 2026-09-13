@@ -1,4 +1,4 @@
-export type TranscriptTurn={role:'agent'|'user';message:string;time_in_call_secs?:number}
+export type TranscriptTurn={role:'agent'|'user';message:string|null;time_in_call_secs?:number;tool_calls?:Array<{tool_name?:string}>|null}
 
 export async function verifyElevenLabsSignature(rawBody:string,header:string|null,secret:string,nowSeconds=Math.floor(Date.now()/1000)){
   if(!header||!secret)return false
@@ -15,9 +15,13 @@ export async function verifyElevenLabsSignature(rawBody:string,header:string|nul
 }
 
 export function transcriptText(turns:TranscriptTurn[]){
-  return turns.filter(turn=>['agent','user'].includes(turn.role)&&typeof turn.message==='string').map(turn=>`${turn.role==='user'?'SUPPLIER':'SOURCEPILOT'}: ${turn.message.trim()}`).join('\n')
+  return turns.flatMap(turn=>typeof turn.message==='string'?[`${turn.role==='user'?'SUPPLIER':'SOURCEPILOT'}: ${turn.message.trim()}`]:[]).join('\n')
 }
 
-export function supplierTranscript(turns:TranscriptTurn[]){return turns.filter(turn=>turn.role==='user').map(turn=>turn.message).join('\n')}
+export function supplierTranscript(turns:TranscriptTurn[]){return turns.flatMap(turn=>turn.role==='user'&&typeof turn.message==='string'?[turn.message]:[]).join('\n')}
+
+export function voicemailDetected(turns:TranscriptTurn[]){
+  return turns.some(turn=>turn.tool_calls?.some(call=>call.tool_name==='voicemail_detection'))
+}
 
 export function supplierRequestedNoContact(text:string){return /\b(do not|don't|dont|stop)\s+(?:call(?:ing)?|contact(?:ing)?|message|email)|\bremove\s+(?:us|me)\s+from|\bopt\s*(?:me|us)?\s*out\b/i.test(text)}

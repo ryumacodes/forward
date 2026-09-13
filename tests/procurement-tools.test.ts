@@ -11,7 +11,7 @@ import { intakeClientTools } from '../src/features/intake/agentTools'
 import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
 import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
-import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature } from '../src/features/voice/webhook'
+import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature, voicemailDetected } from '../src/features/voice/webhook'
 import { canPurchase } from '../src/features/requests/ranking'
 import { checkSupplies, allSupplyLeads } from '../src/features/supplycheck/engine'
 import { createDemoSeed } from '../src/features/requests/data'
@@ -235,6 +235,8 @@ test('ElevenLabs webhooks require a fresh valid HMAC and preserve speaker eviden
  expect(transcriptText(turns)).toContain('SUPPLIER: The total is $315')
  expect(supplierTranscript(turns)).not.toContain('Can you quote')
  expect(supplierRequestedNoContact(supplierTranscript(turns))).toBe(true)
+ expect(voicemailDetected([{role:'agent',message:null,tool_calls:[{tool_name:'voicemail_detection'}]}])).toBe(true)
+ expect(voicemailDetected(turns)).toBe(false)
 })
 test('supply check ranks halal suppliers and attaches websites when halal is required',()=>{
  const results=checkSupplies({item:'chicken breast fillets', quantity:30, unit:'kg', requiresHalal:true}, allSupplyLeads())

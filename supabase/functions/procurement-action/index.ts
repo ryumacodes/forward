@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
 import { normalizeAustralianPhone } from '../../../src/features/voice/trustPolicy.ts'
 import { completionSummary } from '../../../src/features/communications/completion.ts'
+import { sendMissedOwnerCallFallback } from '../_shared/owner-notifications.ts'
 
 declare const EdgeRuntime:{waitUntil(promise:Promise<unknown>):void}
 
@@ -73,7 +74,7 @@ async function issuePurchaseOrder(client:ReturnType<typeof createClient>,organiz
   if(claimError)throw claimError
   const order=claim as {id:string;po_number:string;status:string;provider_email_id?:string}
   if(order.status==='sent'){
-    EdgeRuntime.waitUntil(notifyOwnerOfCompletion(client,{organizationId,context,poNumber:order.po_number}).catch(error=>console.error('Unable to notify owner of completed purchase order',error)))
+    EdgeRuntime.waitUntil(notifyOwnerOfCompletion(client,{organizationId,context,poNumber:order.po_number,approvedBy}).catch(error=>console.error('Unable to notify owner of completed purchase order',error)))
     return json({status:order.status,purchaseOrder:{id:order.id,poNumber:order.po_number,status:order.status},providerId:order.provider_email_id})
   }
   const id=order.id,poNumber=order.po_number
@@ -88,7 +89,7 @@ async function issuePurchaseOrder(client:ReturnType<typeof createClient>,organiz
     await client.from('procurement_requests').update({status:'Approved'}).eq('id',context.request.id).eq('organization_id',organizationId)
     await client.from('supplier_call_queue').update({status:'cancelled',last_error:'Request fulfilled by purchase order',lease_expires_at:null,updated_at:new Date().toISOString()}).eq('organization_id',organizationId).eq('request_id',context.request.id).in('status',['queued','processing','blocked','failed','uncertain'])
     await client.from('agent_decisions').insert({organization_id:organizationId,request_id:context.request.id,supplier_id:context.supplier.id,decision_type:'purchase',outcome:'allow',reasons:[authorizationMode==='preauthorized'?'Stored request pre-authorization and every deterministic purchase rule passed':'Explicit owner action and every deterministic purchase rule passed'],policy_snapshot:context.policy||{}})
-    EdgeRuntime.waitUntil(notifyOwnerOfCompletion(client,{organizationId,context,poNumber}).catch(error=>console.error('Unable to notify owner of completed purchase order',error)))
+    EdgeRuntime.waitUntil(notifyOwnerOfCompletion(client,{organizationId,context,poNumber,approvedBy}).catch(error=>console.error('Unable to notify owner of completed purchase order',error)))
     return json({status:'sent',providerId:payload.providerId,purchaseOrder:{id,poNumber,status:'sent'}})
   }
   return sent
@@ -137,7 +138,7 @@ async function createEvent(client:ReturnType<typeof createClient>,row:Record<str
   return {event:existing,created:false}
 }
 
-async function notifyOwnerOfCompletion(client:ReturnType<typeof createClient>,input:{organizationId:string;context:Awaited<ReturnType<typeof quoteContext>>;poNumber:string}){
+async function notifyOwnerOfCompletion(client:ReturnType<typeof createClient>,input:{organizationId:string;context:Awaited<ReturnType<typeof quoteContext>>;poNumber:string;approvedBy:string}){
   const phone=normalizeAustralianPhone(Deno.env.get('OWNER_APPROVAL_PHONE')||'')
   const details=input.context.request.details as Record<string,unknown>
   const quoteDetails=input.context.quote.details as Record<string,unknown>
@@ -146,23 +147,34 @@ async function notifyOwnerOfCompletion(client:ReturnType<typeof createClient>,in
     await sendSms(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,body:summary,key:`owner-completion-sms/${input.context.quote.id}`,purpose:'owner_completion'})
     return
   }
-  try{await sendCompletionCall(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,summary})}
+  const email=await ownerNotificationEmail(client,input.approvedBy).catch(error=>{console.error('Unable to resolve owner notification email',error);return ''})
+  try{await sendCompletionCall(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,email,summary})}
   catch(error){
     console.error('Owner completion call unavailable; falling back to SMS',error)
-    await sendSms(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,to:phone,body:summary,key:`owner-completion-fallback/${input.context.quote.id}`,purpose:'owner_completion'})
+    await sendMissedOwnerCallFallback(client,{organizationId:input.organizationId,requestId:input.context.request.id,supplierId:input.context.supplier.id,quoteId:input.context.quote.id,phone,email,summary,reason:error instanceof Error?error.message:'Owner completion call unavailable'})
   }
 }
 
-async function sendCompletionCall(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId:string;to:string;summary:string}){
+async function sendCompletionCall(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId:string;to:string;email:string;summary:string}){
   const apiKey=Deno.env.get('ELEVENLABS_API_KEY'),agentId=Deno.env.get('ELEVENLABS_OWNER_NOTIFICATION_AGENT_ID'),phoneNumberId=Deno.env.get('ELEVENLABS_PHONE_NUMBER_ID')
   if(!apiKey||!agentId||!phoneNumberId)throw new Error('Owner completion calling is not configured.')
-  const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'voice',purpose:'owner_completion',recipient:input.to,status:'queued',payload:{summary:input.summary},idempotency_key:`owner-completion-call/${input.quoteId}`})
+  const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'voice',purpose:'owner_completion',recipient:input.to,status:'queued',payload:{summary:input.summary,ownerEmail:input.email},idempotency_key:`owner-completion-call/${input.quoteId}`})
   if(!created.created)return
-  const prompt='You are Sarah, the SourcePilot AI procurement assistant. This is a completion-only call to the business owner. State the supplied completion summary clearly, including supplier, exact item, total, delivery, payment days, deposit, and that no automatic payment occurred. Answer only brief questions supported by the supplied summary. Do not request approval, negotiate, change the order, or make new commitments. End politely.'
+  const prompt='You are Sarah, the SourcePilot AI procurement assistant. This is a completion-only call to the business owner. State the supplied completion summary clearly, including supplier, exact item, total, delivery, payment days, deposit, and that no automatic payment occurred. If an automated greeting or voicemail answers, use the configured voicemail detection system tool and do not leave the order details in voicemail. Answer only brief questions supported by the supplied summary. Do not request approval, negotiate, change the order, or make new commitments. End politely.'
   const response=await fetch('https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call',{method:'POST',headers:{'xi-api-key':apiKey,'Content-Type':'application/json'},body:JSON.stringify({agent_id:agentId,agent_phone_number_id:phoneNumberId,to_number:input.to,conversation_initiation_client_data:{dynamic_variables:{completion_summary:input.summary},conversation_config_override:{agent:{first_message:input.summary,prompt:{prompt}}}}})})
   const body=await response.json().catch(()=>({})) as {success?:boolean;message?:string;conversation_id?:string}
   if(!response.ok||!body.success||!body.conversation_id){const message=body.message||`ElevenLabs returned ${response.status}`;await client.from('communication_events').update({status:'failed',provider_error:message}).eq('id',created.event.id);throw new Error(message)}
   await client.from('communication_events').update({status:'sent',provider_id:body.conversation_id,sent_at:new Date().toISOString()}).eq('id',created.event.id)
+}
+
+async function ownerNotificationEmail(client:ReturnType<typeof createClient>,userId:string){
+  const configured=(Deno.env.get('OWNER_NOTIFICATION_EMAIL')||'').trim()
+  if(configured)return configured
+  const {data,error}=await client.auth.admin.getUserById(userId)
+  if(error)throw error
+  const email=data.user?.email?.trim()
+  if(!email)throw new Error('The authorizing owner has no notification email.')
+  return email
 }
 
 async function sendEmail(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId?:string;purpose:'supplier_brief'|'purchase_order';to:string;subject:string;text:string;key:string}){
