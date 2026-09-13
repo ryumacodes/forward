@@ -60,8 +60,8 @@ export function previewNormalize(source: IntakeSource, text: string, now = new D
   const paymentMatch=/\b(?:net\s*)?(\d{1,3})\s*days?\b/i.exec(text)
   const depositMatch=/\b(\d{1,3}(?:\.\d{1,2})?)\s*%\s*deposit\b/i.exec(text)
   const noDeposit=/\bno deposit\b/i.test(text)
-  const locationMatch=/\b(?:deliver(?:ed|y)?\s+(?:to|at)|drop(?:ped)?\s+(?:to|at))\s+([^,.]+(?:,\s*[^,.]+?)?)(?=\s+(?:by|before|today|tomorrow|under|budget|max|net|and no deposit)|[.]|$)/i.exec(text)
-  const itemMatch=/(?:need|supply|quote(?: for)?|want)\s+(?:about\s+)?(?:\d+(?:\.\d+)?\s*(?:kg|kilos?|litres?|liters?|l|units?|boxes?|cases?)\s+(?:of\s+)?)?([^,.]+?)(?=\s+(?:by|before|today|tomorrow)\b|\s+(?:under|for|at|with)\s+(?:\$|\d)|[,.;]|$)/i.exec(text)
+  const locationMatch=/\b(?:deliver(?:ed|y)?\s+(?:to|at)|drop(?:ped)?\s+(?:to|at))\s+([^,.]+?(?:,\s*[^,.]+?)?)(?=\s+(?:by|before|today|tomorrow|under|budget|max|net|and no deposit)|[.]|$)/i.exec(text)
+  const itemMatch=/(?:need|supply|quote(?: for)?|want)\s+(?:about\s+)?(?:\d+(?:\.\d+)?\s*(?:kg|kilos?|litres?|liters?|l|units?|boxes?|cases?)\s+(?:of\s+)?)?([^,.]+?)(?=\s+(?:deliver(?:ed|y)?\s+(?:to|at)|drop(?:ped)?\s+(?:to|at))\b|\s+(?:by|before|today|tomorrow)\b|\s+(?:under|for|at|with)\s+(?:\$|\d)|[,.;]|$)/i.exec(text)
   const relativeDay=/\b(today|tomorrow|tonight)\b/i.exec(text)
   const namedDeadline=/\bby\s+([^,;.$]+?)(?=\s+(?:for|under|at|with|pay|net)\b|[,;.]|$)/i.exec(text)?.[1]
   const deadlineEvidence=relativeDay?[relativeDay[0],TIME_RE.exec(text)?.[0]].filter(Boolean).join(' '):namedDeadline?`by ${namedDeadline}`:''
