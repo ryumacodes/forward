@@ -39,10 +39,10 @@ test('slang-heavy voice request can be structured, reviewed, and created', async
   await expect(reviewDialog.getByLabel('When a quote meets every requirement')).toHaveValue('confirm')
   await page.getByRole('button', { name: /confirm & create request/i }).click()
 
-  await expect(page.getByRole('heading', { name: 'Live supplier discovery' })).toBeVisible()
-  await expect(page.getByLabel('Product or specification')).toHaveValue(/chicken breast.*30 kg/i)
-  await expect(page.getByLabel('Delivery area')).toHaveValue(/Flinders Lane/i)
-  await expect(page.getByRole('status')).toContainText(/Request created.*prefilled supplier search/i)
+  await expect(page.getByRole('banner').getByText('Requests', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Open REQ-.*fresh halal chicken breast/i })).toBeVisible()
+  await expect(page.getByRole('status')).toContainText(/Request created.*added to Requests/i)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
 test('browser voice fallback captures speech and explains its connection mode', async ({ page }) => {

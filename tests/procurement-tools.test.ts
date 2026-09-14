@@ -11,7 +11,7 @@ import { clarifyQuestions, applyResponse, confirmIntake } from '../src/features/
 import { intakeClientTools } from '../src/features/intake/agentTools'
 import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
-import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
+import { cosineSimilarity, extractPublicAbn, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
 import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature, voicemailDetected } from '../src/features/voice/webhook'
 import { canPurchase } from '../src/features/requests/ranking'
 import { checkSupplies, allSupplyLeads } from '../src/features/supplycheck/engine'
@@ -24,6 +24,11 @@ test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51824753557')).toBe(false)
  expect(checkAbn('ABN51824753556')).toBe(false)
  expect(checkAbn('00000000000')).toBe(false)
+})
+test('scraped evidence extracts only checksum-valid public ABNs',()=>{
+ expect(extractPublicAbn('Business details — ABN 51 824 753 556 — Melbourne')).toBe('51824753556')
+ expect(extractPublicAbn('Unverified number 51 824 753 557')).toBeNull()
+ expect(extractPublicAbn('No registry number shown')).toBeNull()
 })
 test('imports remain unauthorised and reject duplicate ABNs',()=>{
  const supplier=prepareSupplier('Example','51 824 753 556','03 9000 0000',[],'orders@example.com')

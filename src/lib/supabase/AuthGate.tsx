@@ -19,7 +19,7 @@ export function AuthGate({children,onBack}:{children:ReactNode;onBack?:()=>void}
   if(backendConfigError) return <div className="auth-screen"><h1>Check Supabase settings</h1><p>Set both VITE_SUPABASE_URL (HTTPS) and VITE_SUPABASE_PUBLISHABLE_KEY (sb_publishable_…). Use a publishable key, never a secret key.</p></div>
   if(!supabase) return children
   if(loading) return <div className="auth-screen" role="status">Opening your workspace…</div>
-  if(user) return <UserContext.Provider value={user}><div className="session-bar"><span>{user.email}</span><button onClick={async()=>{const {error}=await supabase!.auth.signOut();if(error)setError(error.message)}}>Sign out</button>{error && <span role="alert">{error}</span>}</div><div key={user.id}>{children}</div></UserContext.Provider>
+  if(user) return <UserContext.Provider value={user}><div key={user.id}>{children}</div></UserContext.Provider>
   return <main className="auth-onboarding">
     <div className="auth-onboarding-brand"><BrandMark className="landing-mark"/><strong>sourcepilot<i>.</i></strong></div>
     {onBack && <button className="auth-back" onClick={onBack}><ArrowLeft size={15}/> Back</button>}

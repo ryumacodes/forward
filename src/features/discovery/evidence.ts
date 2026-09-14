@@ -12,12 +12,21 @@ export type DiscoveredSupplier = {
   products: string[]
   phone: string | null
   email: string | null
+  abn: string | null
   confidence: number
   semanticScore: number
   profileScore: number
   sources: DiscoverySource[]
   evidenceCheckedAt: string
   mode: 'live'
+}
+
+export function extractPublicAbn(value:string) {
+  const candidates=value.match(/(?:\d[\s.-]*){11}/g)??[]
+  return candidates.map(candidate=>candidate.replace(/\D/g,'')).find(candidate=>{
+    if(!/^\d{11}$/.test(candidate)||candidate[0]==='0')return false
+    return [...candidate].reduce((total,digit,index)=>total+(Number(digit)-(index===0?1:0))*[10,1,3,5,7,9,11,13,15,17,19][index],0)%89===0
+  })??null
 }
 
 const blockedHosts = new Set(['localhost', 'localhost.localdomain'])

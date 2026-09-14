@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.116.0'
-import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources, type DiscoverySource } from '../../../src/features/discovery/evidence.ts'
+import { cosineSimilarity, extractPublicAbn, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources, type DiscoverySource } from '../../../src/features/discovery/evidence.ts'
 import { discoveryProfiles, scoreDiscoveredEvidence, type DiscoveryProfileId } from '../../../src/features/discovery/engine.ts'
 
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type'}
@@ -27,8 +27,8 @@ Deno.serve(async request=>{
       const {data:evidence}=await serviceClient.from('supplier_evidence').select('id,supplier_name,website_url,source_url,extracted_facts').eq('id',body.evidenceId).eq('organization_id',organizationId).single()
       if(!evidence)return json({error:'Supplier evidence was not found in this organisation.'},404)
       const facts=(evidence.extracted_facts||{}) as Record<string,unknown>
-      const row={organization_id:organizationId,name:evidence.supplier_name,abn:null,phone:typeof facts.phone==='string'?facts.phone:null,email:typeof facts.email==='string'?facts.email:null,website_url:evidence.website_url,discovery_evidence_id:evidence.id,contact_source:evidence.source_url,authorised:false}
-      const {data:supplier,error}=await serviceClient.from('suppliers').upsert(row,{onConflict:'organization_id,website_url'}).select('id,name').single()
+      const row={organization_id:organizationId,name:evidence.supplier_name,abn:typeof facts.abn==='string'?facts.abn:null,phone:typeof facts.phone==='string'?facts.phone:null,email:typeof facts.email==='string'?facts.email:null,website_url:evidence.website_url,discovery_evidence_id:evidence.id,contact_source:evidence.source_url,authorised:false}
+      const {data:supplier,error}=await serviceClient.from('suppliers').upsert(row,{onConflict:'organization_id,website_url'}).select('id,name,abn').single()
       if(error)throw error
       return json({supplier})
     }
@@ -51,7 +51,7 @@ Deno.serve(async request=>{
         if(text.length>excerpt.length)excerpt=text
       }
       const evidenceText=[candidate.name,candidate.locality,candidate.summary,candidate.products.join(', '),excerpt].filter(Boolean).join('\n').slice(0,20_000)
-      return {...candidate,sources,excerpt:evidenceText}
+      return {...candidate,sources,excerpt:evidenceText,abn:extractPublicAbn(evidenceText)}
     }))
     const usable=scraped.filter(item=>item.sources.length&&item.excerpt.length>40)
     if(!usable.length)return json({error:'No safe public supplier evidence could be retrieved.'},422)
@@ -69,10 +69,10 @@ Deno.serve(async request=>{
       const embedding=vectors[index+1]
       const semanticScore=Math.max(0,Math.min(1,cosineSimilarity(queryVector,embedding)))
       const profileScore=scoreDiscoveredEvidence({semanticScore,confidence:item.confidence,locality:item.locality,location,products:item.products,requiresHalal:body.requiresHalal},profile)
-      const facts={locality:item.locality,summary:item.summary,products:item.products,phone:item.phone,email:item.email,confidence:item.confidence,sources:item.sources,semanticScore,profileScore,profileId}
+      const facts={locality:item.locality,summary:item.summary,products:item.products,phone:item.phone,email:item.email,abn:item.abn,confidence:item.confidence,sources:item.sources,semanticScore,profileScore,profileId}
       const {data,error}=await serviceClient.from('supplier_evidence').upsert({organization_id:organizationId,search_query:query,supplier_name:item.name,website_url:item.websiteUrl,source_url:source.url,source_title:source.title,content_excerpt:item.excerpt,extracted_facts:facts,embedding_model:embeddingModel,embedding,source_hash:sourceHash,checked_at:checkedAt},{onConflict:'organization_id,source_hash'}).select('id').single()
       if(error)throw error
-      return {id:data.id,name:item.name,websiteUrl:item.websiteUrl,locality:item.locality,summary:item.summary,products:item.products,phone:item.phone,email:item.email,confidence:item.confidence,semanticScore,profileScore,sources:item.sources,evidenceCheckedAt:checkedAt,mode:'live' as const}
+      return {id:data.id,name:item.name,websiteUrl:item.websiteUrl,locality:item.locality,summary:item.summary,products:item.products,phone:item.phone,email:item.email,abn:item.abn,confidence:item.confidence,semanticScore,profileScore,sources:item.sources,evidenceCheckedAt:checkedAt,mode:'live' as const}
     }))
     suppliers.sort((a,b)=>b.profileScore-a.profileScore||b.semanticScore-a.semanticScore||b.confidence-a.confidence||a.name.localeCompare(b.name))
     return json({searchModel,embeddingModel,query,suppliers})

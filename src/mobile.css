@@ -182,8 +182,6 @@ button, input, textarea, select { touch-action: manipulation; }
 .auth-screen form { width: 100%; }
 .auth-screen h1 { margin: 18px 0; }
 .auth-screen p { color: #6b7891; line-height: 1.6; margin-bottom: 20px; }
-.session-bar { position: relative; z-index: 11; padding: 8px 16px; background: #071c50; color: white; display: flex; align-items: center; justify-content: flex-end; gap: 14px; font-size: 12px; }
-.session-bar button { background: #25457c; color: white; min-height: 40px; border-radius: 5px; padding: 8px 12px; }
 .no-selection > :not(.workspace-empty) { display: none; }
 .workspace-empty { padding: 48px 24px; display: grid; justify-items: start; gap: 18px; }
 .workspace-empty p { color: #6b7891; line-height: 1.6; }
