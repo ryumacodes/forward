@@ -8,6 +8,9 @@ SourcePilot is a mobile-first voice procurement agent for Australian small busin
 
 Sign in with your account, or create one with your email.
 
+Test Email: sharonshaun2301@gmail.com
+Test Password: password
+
 ### Demo video
 
 [Watch the SourcePilot demo on YouTube](https://youtu.be/CrQwyHkrgFU)
