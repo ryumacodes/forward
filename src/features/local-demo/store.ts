@@ -9,6 +9,26 @@ export type LocalWorkspace = {
   offers: Offer[]
   callQueue: CallQueueItem[]
   discoveries: DiscoveredSupplier[]
+  orders: LocalOrder[]
+}
+
+export type LocalOrder = {
+  id:string
+  requestId:string
+  offerId:string
+  supplierId:string
+  supplierName:string
+  item:string
+  quantity:number
+  unit:string
+  total:number
+  delivery:string
+  paymentTerms:'Payment on delivery'
+  status:'awaiting_confirmation'|'completed'
+  approvedAt:string
+  completedAt?:string
+  confirmationSessionId:string
+  repeatOf?:string
 }
 
 export type LocalCallTurn = {role:'agent'|'user';message:string;at:string}
@@ -23,6 +43,8 @@ export type LocalCallSession = {
   quote?:LocalSupplierQuote
   outcome?:'fits_rules'|'owner_review'|'outside_bounds'|'stopped'
   updatedAt:string
+  kind?:'quote'|'order_confirmation'
+  orderId?:string
 }
 
 const DB_NAME='sourcepilot-local-demo'
@@ -63,10 +85,10 @@ async function writeValue<T>(key:string,value:T){
 
 export function createLocalWorkspace():LocalWorkspace{
   const seed=createDemoSeed()
-  return {requests:seed.requests,offers:seed.offers.map(offer=>({...offer,requestId:'REQ-024'})),suppliers:[],callQueue:[],discoveries:[]}
+  return {requests:seed.requests,offers:seed.offers.map(offer=>({...offer,requestId:'REQ-024'})),suppliers:[],callQueue:[],discoveries:[],orders:[]}
 }
 
-export async function loadLocalWorkspace(){return (await readValue<LocalWorkspace>(SNAPSHOT_KEY))??createLocalWorkspace()}
+export async function loadLocalWorkspace(){const value=(await readValue<LocalWorkspace>(SNAPSHOT_KEY))??createLocalWorkspace();return {...value,orders:value.orders??[]}}
 export async function saveLocalWorkspace(workspace:LocalWorkspace){await writeValue(SNAPSHOT_KEY,workspace)}
 export async function resetLocalWorkspace(){const value=createLocalWorkspace();await saveLocalWorkspace(value);return value}
 
@@ -95,8 +117,39 @@ export async function verifyLocalSupplier(supplierId:string){
 }
 
 export async function createLocalCallSession(request:ProcurementRequest,supplier:ImportedSupplier){
-  const session:LocalCallSession={id:crypto.randomUUID(),request,supplier,status:'ringing',counteroffers:0,transcript:[],updatedAt:new Date().toISOString()}
+  const session:LocalCallSession={id:crypto.randomUUID(),request,supplier,status:'ringing',counteroffers:0,transcript:[],updatedAt:new Date().toISOString(),kind:'quote'}
   localStorage.setItem(`${CALL_PREFIX}${session.id}`,JSON.stringify(session));publishLocalCall(session);return session
+}
+
+export async function approveLocalOffer(request:ProcurementRequest,offer:Offer,suppliers:ImportedSupplier[]){
+  const workspace=await loadLocalWorkspace()
+  const supplier=suppliers.find(item=>item.name===offer.name)
+  if(!supplier)throw new Error('The supplier record linked to this quote was not found.')
+  if(!supplier.authorised||!supplier.verification?.active)throw new Error('Verify and authorise this supplier before approval.')
+  const existing=workspace.orders.find(item=>item.offerId===offer.id)
+  if(existing){const session=getLocalCallSession(existing.confirmationSessionId);return {order:existing,session}}
+  const session:LocalCallSession={id:crypto.randomUUID(),request,supplier,status:'ringing',counteroffers:0,transcript:[],updatedAt:new Date().toISOString(),kind:'order_confirmation'}
+  const order:LocalOrder={id:`PO-${String(Date.now()).slice(-6)}`,requestId:request.id,offerId:offer.id,supplierId:supplier.id,supplierName:supplier.name,item:request.item,quantity:request.quantity,unit:request.unit,total:offer.price+offer.fees,delivery:offer.delivery,paymentTerms:'Payment on delivery',status:'awaiting_confirmation',approvedAt:new Date().toISOString(),confirmationSessionId:session.id}
+  session.orderId=order.id
+  workspace.orders.unshift(order)
+  workspace.requests=workspace.requests.map(item=>item.id===request.id?{...item,status:'Approved'}:item)
+  await saveLocalWorkspace(workspace)
+  localStorage.setItem(`${CALL_PREFIX}${session.id}`,JSON.stringify(session));publishLocalCall(session)
+  return {order,session}
+}
+
+export async function completeLocalOrder(orderId:string){
+  const workspace=await loadLocalWorkspace(),order=workspace.orders.find(item=>item.id===orderId)
+  if(!order)throw new Error('The approved local order could not be found.')
+  order.status='completed';order.completedAt=new Date().toISOString();await saveLocalWorkspace(workspace);return order
+}
+
+export async function repeatLocalOrder(orderId:string){
+  const workspace=await loadLocalWorkspace(),order=workspace.orders.find(item=>item.id===orderId),source=workspace.requests.find(item=>item.id===order?.requestId)
+  if(!order||!source)throw new Error('The order history record could not be repeated.')
+  const numeric=Math.max(0,...workspace.requests.map(item=>Number(item.id.match(/\d+/)?.[0]??0)))+1
+  const request:ProcurementRequest={...source,id:`REQ-${String(numeric).padStart(3,'0')}`,status:'Ready to source',deadline:new Date(Date.now()+48*60*60*1000).toISOString(),brief:`Repeat of ${order.id}: ${source.brief??`${source.quantity} ${source.unit} ${source.item}`}`}
+  workspace.requests.unshift(request);await saveLocalWorkspace(workspace);return request
 }
 
 export function getLocalCallSession(id:string){const value=localStorage.getItem(`${CALL_PREFIX}${id}`);return value?JSON.parse(value) as LocalCallSession:null}
@@ -115,4 +168,3 @@ export function offerFromLocalCall(session:LocalCallSession):Offer|null{
   const quote=session.quote
   return {id:`local-${session.id}`,requestId:session.request.id,name:session.supplier.name,initials:session.supplier.name.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase(),item:session.request.item,quantity:quote.quantity,price:Math.max(0,quote.total-quote.fees),delivery:quote.delivery,onTime:Date.parse(quote.delivery)<=Date.parse(session.request.deadline),exact:quote.exact,minutes:'Live demo',paymentDays:quote.paymentDays,depositPercent:quote.depositPercent,fees:quote.fees,originalPaymentDays:quote.paymentDays,onTimeDeliveries:0,completedOrders:0,authorised:true,abnVerified:true,termsConfirmed:true,transcript:session.transcript.map(turn=>({role:turn.role,message:turn.message})),live:true}
 }
-

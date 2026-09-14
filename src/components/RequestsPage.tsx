@@ -17,6 +17,7 @@ type RequestsPageProps = {
   onCreate: () => void
   onAddRequest: (request: ProcurementRequest) => ProcurementRequest | Promise<ProcurementRequest>
   onTranscript: (offer: Offer) => void
+  onLocalApprove?: (offer:Offer)=>Promise<void>
 }
 
 const stages: ProcurementRequest['status'][] = ['Ready to source', 'Calling suppliers', 'Needs approval', 'Approved']
@@ -41,7 +42,7 @@ function matchesDueFilter(request: ProcurementRequest, filter: DueFilter, now: n
   return deadline >= now && deadline <= now + horizon
 }
 
-export function RequestsPage({ requests, offers, selectedId, live, onSelect, onCreate, onAddRequest, onTranscript }: RequestsPageProps) {
+export function RequestsPage({ requests, offers, selectedId, live, onSelect, onCreate, onAddRequest, onTranscript, onLocalApprove }: RequestsPageProps) {
   const [statusFilter, setStatusFilter] = useState<ProcurementRequestFilter>('All')
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [dueFilter, setDueFilter] = useState<DueFilter>('Any')
@@ -154,13 +155,13 @@ export function RequestsPage({ requests, offers, selectedId, live, onSelect, onC
 
     {requests.length === 0 && <div className="requests-empty"><h2>Create a procurement request first</h2><p>A supplier quote must be attached to an owner-approved request brief.</p><button className="primary" onClick={onCreate}><Plus size={16}/> Create procurement request</button></div>}
     {requestOpen && <AddRequest requests={requests} onAdd={addRequest} onClose={() => setRequestOpen(false)}/>}
-    {detailsOpen && selected && <RequestDrawer request={selected} offers={selectedOffers} recommended={recommended} manualOffers={manualOffers} live={live} showQuotes={showQuotes} onShowQuotes={() => setShowQuotes(value => !value)} onTranscript={onTranscript} onClose={() => setDetailsOpen(false)}/>}
+    {detailsOpen && selected && <RequestDrawer request={selected} offers={selectedOffers} recommended={recommended} manualOffers={manualOffers} live={live} showQuotes={showQuotes} onShowQuotes={() => setShowQuotes(value => !value)} onTranscript={onTranscript} onLocalApprove={onLocalApprove} onClose={() => setDetailsOpen(false)}/>}
   </section>
 }
 
-type RequestDrawerProps = { request: ProcurementRequest; offers: Offer[]; recommended?: Offer; manualOffers: Offer[]; live: boolean; showQuotes: boolean; onShowQuotes: () => void; onTranscript: (offer: Offer) => void; onClose: () => void }
+type RequestDrawerProps = { request: ProcurementRequest; offers: Offer[]; recommended?: Offer; manualOffers: Offer[]; live: boolean; showQuotes: boolean; onShowQuotes: () => void; onTranscript: (offer: Offer) => void; onLocalApprove?: (offer:Offer)=>Promise<void>; onClose: () => void }
 
-function RequestDrawer({ request, offers, recommended, manualOffers, live, showQuotes, onShowQuotes, onTranscript, onClose }: RequestDrawerProps) {
+function RequestDrawer({ request, offers, recommended, manualOffers, live, showQuotes, onShowQuotes, onTranscript, onLocalApprove, onClose }: RequestDrawerProps) {
   const state = statusCopy[request.status]
   return <dialog className="request-drawer" aria-labelledby="request-drawer-title" ref={node => { if (node && !node.open) node.showModal() }} onCancel={onClose}>
     <div className="drawer-head"><div><span className="eyebrow">{request.id} · {request.category}</span><h2 id="request-drawer-title">{request.item}</h2><p>{request.quantity} {request.unit} required by {deadlineLabel(request.deadline)}</p></div><button className="icon-button" autoFocus aria-label="Close request details" onClick={onClose}><X size={20}/></button></div>
@@ -171,7 +172,7 @@ function RequestDrawer({ request, offers, recommended, manualOffers, live, showQ
       <div className="request-facts"><div><span>Maximum budget</span><strong>{money(request.budget)}</strong></div><div><span>Payment target</span><strong>{request.minimumPaymentDays ?? 0}+ days</strong></div><div><span>Deposit limit</span><strong>{request.maximumDepositPercent ?? 0}%</strong></div><div><span>Sourcing strategy</span><strong>{sourcingModeLabel(request.sourcingMode)}</strong></div><div><span>Approval mode</span><strong>{request.purchaseMode === 'preauthorized' ? 'Pre-authorised' : 'Owner confirms'}</strong></div>{request.createdBy && <div><span>Started by</span><strong>{request.createdBy}</strong></div>}</div>
       <div className="delivery-fact"><MapPin size={16}/><span><small>Deliver to</small><strong>{request.location}</strong></span></div>
       {manualOffers.map(offer => <section className="manual-quote-card" key={offer.id}><div><ShieldCheck size={16}/><span><strong>Supplier lead awaiting verification</strong><small>Manually captured · no outreach authorised</small></span></div><h3>{offer.name}</h3><p>{offer.quantity} {request.unit} · {money(offer.price + offer.fees)} total · {offer.delivery}</p><dl><div><dt>ABN</dt><dd>{offer.supplierContact?.abn}</dd></div><div><dt>Source</dt><dd>{offer.supplierContact?.source}</dd></div><div><dt>Payment</dt><dd>Net {offer.paymentDays}</dd></div><div><dt>Deposit</dt><dd>{offer.depositPercent}%</dd></div></dl>{offer.supplierContact?.note && <p>Evidence note: {offer.supplierContact.note}</p>}</section>)}
-      {recommended && <section className="request-recommendation"><div className="recommendation-top"><span><CheckCircle2 size={15}/> Best available quote</span><small>{recommended.live ? 'Live transcript evidence' : 'Demo recommendation'}</small></div><div className="recommendation-supplier"><span className="supplier-logo">{recommended.initials}</span><div><strong>{recommended.name}</strong><small>{recommended.exact ? 'Exact product' : 'Substitution'} · {recommended.quantity} {request.unit} · {recommended.onTime ? 'on time' : 'timing review'}</small></div><b>{money(recommended.price + recommended.fees)}<small>delivered total</small></b></div><div className="recommendation-saving"><ShieldCheck size={15}/><span><strong>{recommended.price + recommended.fees <= request.budget ? `${money(request.budget - recommended.price - recommended.fees)} under budget` : 'Over budget'}</strong><small>{recommended.paymentDays ? `Net ${recommended.paymentDays}` : 'Due on delivery'} · {recommended.depositPercent}% deposit · {money(recommended.fees)} fees</small></span></div><button className="primary full" onClick={onShowQuotes}>{showQuotes ? 'Hide quote comparison' : `Review all ${offers.length} quotes`} <ArrowRight size={15}/></button></section>}
+      {recommended && <section className="request-recommendation"><div className="recommendation-top"><span><CheckCircle2 size={15}/> Best available quote</span><small>{recommended.live ? 'Live transcript evidence' : 'Demo recommendation'}</small></div><div className="recommendation-supplier"><span className="supplier-logo">{recommended.initials}</span><div><strong>{recommended.name}</strong><small>{recommended.exact ? 'Exact product' : 'Substitution'} · {recommended.quantity} {request.unit} · {recommended.onTime ? 'on time' : 'timing review'}</small></div><b>{money(recommended.price + recommended.fees)}<small>delivered total</small></b></div><div className="recommendation-saving"><ShieldCheck size={15}/><span><strong>{recommended.price + recommended.fees <= request.budget ? `${money(request.budget - recommended.price - recommended.fees)} under budget` : 'Over budget'}</strong><small>{recommended.paymentDays ? `Net ${recommended.paymentDays}` : 'Due on delivery'} · {recommended.depositPercent}% deposit · {money(recommended.fees)} fees</small></span></div><button className="primary full" onClick={onShowQuotes}>{showQuotes ? 'Hide quote comparison' : `Review all ${offers.length} quotes`} <ArrowRight size={15}/></button>{onLocalApprove&&recommended.live&&request.status!=='Approved'&&<button className="primary full drawer-approve" onClick={()=>void onLocalApprove(recommended)}>Approve & call supplier to confirm</button>}</section>}
       {showQuotes && offers.length > 0 && <div className="compact-quotes">{offers.map(offer => {
         const checks = validateOffer(offer, request)
         const failures = Object.entries(checks).filter(([, passes]) => !passes).map(([label]) => label)

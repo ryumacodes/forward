@@ -27,9 +27,11 @@ The local flag takes precedence over configured browser-side provider values. Re
 5. A separate supplier-responder tab opens. Answer Sarah's simulated call.
 6. Submit an out-of-bounds quote. Sarah identifies the exact budget, payment, and deposit violations and makes a bounded counteroffer.
 7. Submit corrected terms. The dashboard receives the quote and transcript immediately through a browser `BroadcastChannel` and persists them in IndexedDB.
-8. Open **Call activity** to review the conversation evidence. Reload the app to demonstrate persistence.
+8. Open **Requests**, select the request, and choose **Approve & call supplier to confirm**. This is the explicit human approval boundary.
+9. In the second supplier tab, answer Sarah's order-confirmation call and accept payment on delivery. The dashboard marks the local order complete without charging a payment method.
+10. Open **Call activity** to review the transcript and successfully negotiated supplier history. Use **Repeat order** to create a fresh sourcing request, then reload to demonstrate persistence.
 
-The registry and telephone actions are simulations and are labelled as such. The public-page retrieval is live. No SMS, email, purchase order, external call, or payment is sent.
+Select multiple authorised suppliers and choose **Queue selected** to open one simulated responder call per supplier. The registry, telephone, purchase-order and payment actions are simulations and are labelled as such. Public-page retrieval is live. No SMS, email, external call, supplier commitment, or payment is sent.
 
 ## Verification
 
@@ -39,4 +41,3 @@ npx --yes bun test
 npm run test:e2e
 npm run test:local-demo
 ```
-
