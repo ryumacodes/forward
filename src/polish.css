@@ -154,14 +154,26 @@ dialog::backdrop,.transcript-panel::backdrop { background: #041334a6; backdrop-f
   .main-shell > main { padding: 32px 26px; }.topbar { padding-inline: 26px; }
 }
 
+/* AuthGate renders this bar above the workspace. Keep the fixed desktop rail
+   below it instead of letting the bar cover the brand. */
+.session-bar { min-height: 56px; width: 100%; min-width: 0; }
+.session-bar + div .app-shell { min-height: calc(100vh - 56px); }
+.session-bar + div .sidebar { top: 56px; }
+
 @media (max-width: 850px) and (min-width: 768px) {
   .sidebar { width: 78px; }.main-shell { width: calc(100% - 78px); margin-left: 78px; }
   .nav-item.active::before { left: -10px; }.dashboard-orb { flex-basis: 72px; width: 72px; height: 72px; }.dashboard-orb .cloud-orb { transform: scale(.82); }
 }
 
 @media (max-width: 767px) {
-  .sidebar { height: 62px; padding: 12px 18px; background: linear-gradient(90deg,var(--navy-950),var(--navy-900)); border-bottom: 1px solid #ffffff12; }
-  .main-shell { width: 100%; margin-left: 0; }
+  html,body,#root { width: 100%; max-width: 100%; overflow-x: clip; }
+  .app-shell { display: block; width: 100%; min-width: 0; }
+  .sidebar { position: relative; inset: auto; width: 100%; max-width: none; height: 62px; padding: 12px 18px; background: linear-gradient(90deg,var(--navy-950),var(--navy-900)); border-bottom: 1px solid #ffffff12; }
+  .session-bar + div .sidebar { top: auto; }
+  .main-shell { width: 100%; max-width: none; margin-left: 0; }
+  .main-shell > main { width: 100%; max-width: none; margin-inline: 0; }
+  .session-bar { padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); }
+  .session-bar > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sidebar .brand { color: #fff; }.sidebar nav { background: #061747f2; border-color: #ffffff13; box-shadow: 0 -8px 28px #04133435; backdrop-filter: blur(18px); }
   .sidebar .nav-item { color: #90a5c9; }.sidebar .nav-item.active { color: #fff; background: #164cc83d; }.sidebar .nav-item.active::before { display: none; }
   .topbar { height: 47px; padding-inline: 18px; }.main-shell > main { padding: 25px 16px calc(98px + env(safe-area-inset-bottom)); }
