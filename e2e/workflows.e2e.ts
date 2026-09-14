@@ -39,9 +39,49 @@ test('slang-heavy voice request can be structured, reviewed, and created', async
   await expect(reviewDialog.getByLabel('When a quote meets every requirement')).toHaveValue('confirm')
   await page.getByRole('button', { name: /confirm & create request/i }).click()
 
-  await expect(page.getByRole('heading', { name: 'Requests', exact: true }).first()).toBeVisible()
-  await expect(page.getByText('Chicken breast', { exact: false }).first()).toBeVisible()
-  await expect(page.getByRole('status')).toContainText('Request created')
+  await expect(page.getByRole('heading', { name: 'Live supplier discovery' })).toBeVisible()
+  await expect(page.getByLabel('Product or specification')).toHaveValue(/chicken breast.*30 kg/i)
+  await expect(page.getByLabel('Delivery area')).toHaveValue(/Flinders Lane/i)
+  await expect(page.getByRole('status')).toContainText(/Request created.*prefilled supplier search/i)
+})
+
+test('browser voice fallback captures speech and explains its connection mode', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop: () => undefined }] }) } })
+    class FakeRecognition {
+      lang = ''
+      continuous = false
+      interimResults = false
+      onresult: ((event: unknown) => void) | null = null
+      onerror: ((event: unknown) => void) | null = null
+      onend: (() => void) | null = null
+      start() {
+        const result = Object.assign([{ transcript: 'need 24 litres of oat milk by Friday under 120 dollars' }], { isFinal: true })
+        window.setTimeout(() => { this.onresult?.({ resultIndex: 0, results: [result] }); this.onend?.() }, 0)
+      }
+      stop() { this.onend?.() }
+    }
+    Object.defineProperty(window, 'SpeechRecognition', { configurable: true, value: FakeRecognition })
+  })
+  await enterWorkspace(page)
+  await page.getByRole('button', { name: /Talk to Sarah|Start talking/ }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Sarah' })
+  await expect(dialog.getByLabel('Voice connection')).toContainText('Browser dictation fallback')
+  await dialog.getByRole('button', { name: 'Tap to talk' }).click()
+  await expect(dialog.getByLabel('Your request')).toHaveValue(/24 litres of oat milk/i)
+  await expect(dialog.getByRole('status')).toContainText('I heard you')
+})
+
+test('browser voice fallback reports blocked microphone permission', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => { throw new DOMException('denied', 'NotAllowedError') } } })
+    Object.defineProperty(window, 'SpeechRecognition', { configurable: true, value: class { start() {} stop() {} } })
+  })
+  await enterWorkspace(page)
+  await page.getByRole('button', { name: /Talk to Sarah|Start talking/ }).first().click()
+  const dialog = page.getByRole('dialog', { name: 'Sarah' })
+  await dialog.getByRole('button', { name: 'Tap to talk' }).click()
+  await expect(dialog.getByRole('status')).toContainText('Microphone access is blocked')
 })
 
 test('Michelle can review and store the FreshFoods pre-authorisation limits', async ({ page }) => {

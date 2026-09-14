@@ -72,6 +72,17 @@ export default function App() {
     loadWorkspace().then(data=>{if(cancelled)return;setOrganization(data.organization);setOrganizations(data.organizations);setMembers(data.members);setRequests(data.requests);setImportedSuppliers(data.suppliers);setLiveOffers(data.offers);setCallQueue(data.callQueue);setSelected(data.requests[0]?.id ?? '')}).catch(error=>{if(!cancelled)setLoadError(error.message || 'Could not load your workspace.')}).finally(()=>{if(!cancelled)setLoading(false)})
     return ()=>{cancelled=true}
   },[owner?.id])
+  useEffect(() => {
+    if (notice === 'Request saved. Authorise a verified supplier to start live outreach.') {
+      setPage('Suppliers')
+      setMobileDetail(false)
+      setNotice('Request saved. Review the prefilled brief, then find live suppliers.')
+    } else if (notice === 'Request created for this session. Live supplier calls are not connected in demo mode.') {
+      setPage('Suppliers')
+      setMobileDetail(false)
+      setNotice('Request created. Review the prefilled supplier search below; live discovery is not connected in demo mode.')
+    }
+  }, [notice])
   const switchOrganization=async(organizationId:string)=>{
     setLoading(true);setLoadError('')
     try{const data=await loadWorkspace(organizationId);setOrganization(data.organization);setOrganizations(data.organizations);setMembers(data.members);setRequests(data.requests);setImportedSuppliers(data.suppliers);setLiveOffers(data.offers);setCallQueue(data.callQueue);setSelected(data.requests[0]?.id??'')}

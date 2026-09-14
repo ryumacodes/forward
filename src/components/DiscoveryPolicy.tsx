@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import { AlertCircle, Check, ExternalLink, LoaderCircle, MapPin, Search, ShieldCheck, VerifiedBadge, X } from '../icons'
 import { discoverSuppliers, importDiscoveredSupplier } from '../features/discovery/service'
 import type { DiscoveredSupplier } from '../features/discovery/evidence'
@@ -8,6 +8,7 @@ import type { ProcurementRequest } from '../features/requests/data'
 const labels: Record<DiscoveryFactor, string> = {productMatch:'Product match',deliveryFit:'Delivery fit',landedCost:'Landed cost',reliability:'Reliability',locality:'Local proximity',paymentTerms:'Payment terms',certifications:'Certifications'}
 
 export function DiscoveryPolicy({organizationId,request,onImported}:{organizationId?:string;request?:ProcurementRequest;onImported?:()=>void|Promise<void>}) {
+  const panel = useRef<HTMLElement>(null)
   const [profileId,setProfileId] = useState<DiscoveryProfileId>('hospitality')
   const [product,setProduct] = useState('chicken breast wholesale')
   const [location,setLocation] = useState('Melbourne VIC')
@@ -24,13 +25,17 @@ export function DiscoveryPolicy({organizationId,request,onImported}:{organizatio
     setProduct([request.requiresHalal?'halal':null,request.freshness,request.cut,request.item,`${request.quantity} ${request.unit}`].filter(Boolean).join(' '))
     setLocation(request.location)
   },[request])
+  useEffect(()=>{
+    const frame = window.requestAnimationFrame(()=>panel.current?.scrollIntoView({behavior:'smooth',block:'start'}))
+    return()=>window.cancelAnimationFrame(frame)
+  },[])
   const search = async(event:FormEvent) => {
     event.preventDefault();setLoading(true);setError('')
     try{setResults(await discoverSuppliers({product,location,profileId,organizationId,requiresHalal:request?.requiresHalal}))}catch(reason){setError(reason instanceof Error?reason.message:'Supplier discovery failed.')}
     finally{setLoading(false)}
   }
   const importLead=async(supplier:DiscoveredSupplier)=>{if(!organizationId)return;setImporting(supplier.id);setError('');try{await importDiscoveredSupplier({organizationId,evidenceId:supplier.id});setImported(previous=>new Set(previous).add(supplier.id));await onImported?.()}catch(reason){setError(reason instanceof Error?reason.message:'Supplier import failed.')}finally{setImporting('')}}
-  return <section className="policy-panel discovery-workbench">
+  return <section className="policy-panel discovery-workbench" ref={panel} aria-label="Supplier discovery for selected request">
     <div className="section-header"><div><h2>Live supplier discovery</h2><p>Searches public supplier pages, captures evidence, then uses embeddings to match product language.</p></div><span className="demo-badge">Evidence before eligibility</span></div>
     <form className="discovery-search-form" onSubmit={search}>
       <label>Product or specification<input required maxLength={200} value={product} onChange={event=>setProduct(event.target.value)} placeholder="e.g. halal chicken breast wholesale"/></label>

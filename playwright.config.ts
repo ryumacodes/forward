@@ -18,7 +18,7 @@ export default defineConfig({
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
-    command: 'VITE_SUPABASE_URL= VITE_SUPABASE_PUBLISHABLE_KEY= VITE_ELEVENLABS_AGENT_ID= bun run dev --port 4174',
+    command: 'VITE_SUPABASE_URL= VITE_SUPABASE_PUBLISHABLE_KEY= VITE_ELEVENLABS_AGENT_ID= npm run dev -- --port 4174',
     url: 'http://127.0.0.1:4174',
     reuseExistingServer: false,
   },
