@@ -107,9 +107,18 @@ export default function App() {
       request: createdRequest,
       organizationId: organization.id,
       onProgress: message => setNotice(message),
+      onImported: async count => {
+        await refreshWorkspace()
+        setPage('Suppliers')
+        setMobileDetail(false)
+        window.scrollTo({top:0})
+        setNotice(`${count} researched supplier${count===1?'':'s'} added. ABN verification has started…`)
+      },
     }).then(async summary => {
       await refreshWorkspace()
-      setNotice(`Supplier screening complete: ${summary.imported} imported, ${summary.verified} ABR verified, ${summary.needsAbn} need an ABN, ${summary.failed} failed. Review suppliers before authorising outreach.`)
+      setPage('Suppliers')
+      setMobileDetail(false)
+      setNotice(`ABN verification completed: ${summary.verified} verified, ${summary.needsAbn} need an ABN, ${summary.failed} failed. Choose “Authorise & start outreach” to send the supplier SMS and queue Sarah’s call.`)
     }).catch(error => {
       const message = error instanceof Error ? error.message : 'Unknown supplier screening error.'
       setNotice(`Request saved in Requests. Automatic supplier screening could not finish: ${message}`)
@@ -213,7 +222,7 @@ export default function App() {
         if(!options?.keepOpen)setModal(false)
         notify(options?.keepOpen
           ? (supabase ? 'Request created from Sarah. Start automatic supplier screening.' : 'Request created from Sarah in this demo session.')
-          : (supabase ? 'Request saved. Authorise a verified supplier to start live outreach.' : 'Request created for this session. Live supplier calls are not connected in demo mode.'))
+          : (supabase ? 'Request saved. Authorise a verified supplier to start live outreach.' : 'Request created and added to Requests. Live supplier calls are not connected in demo mode.'))
       }}
     />}
     {transcript && <TranscriptDialog offer={transcript} onClose={()=>setTranscript(null)}/>}

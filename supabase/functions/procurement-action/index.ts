@@ -17,8 +17,8 @@ Deno.serve(async request=>{
     const supabaseUrl=Deno.env.get('SUPABASE_URL'),anonKey=Deno.env.get('SUPABASE_ANON_KEY'),serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     if(!supabaseUrl||!anonKey||!serviceKey)throw new Error('Supabase function secrets are incomplete.')
     const client=createClient(supabaseUrl,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}})
-    const body=await request.json() as {action:'email_brief'|'request_approval'|'issue_purchase_order'|'auto_purchase';organizationId?:string;requestId?:string;supplierId?:string;quoteId?:string}
-    if(!['email_brief','request_approval','issue_purchase_order','auto_purchase'].includes(body.action))return json({error:'Unknown procurement action.'},400)
+    const body=await request.json() as {action:'email_brief'|'sms_brief'|'request_approval'|'issue_purchase_order'|'auto_purchase';organizationId?:string;requestId?:string;supplierId?:string;quoteId?:string}
+    if(!['email_brief','sms_brief','request_approval','issue_purchase_order','auto_purchase'].includes(body.action))return json({error:'Unknown procurement action.'},400)
     if(!body.organizationId)return json({error:'Select an organisation workspace.'},400)
     if(body.action==='auto_purchase'){
       if(authorization!==`Bearer ${serviceKey}`)return json({error:'Service authorization is required.'},403)
@@ -37,6 +37,7 @@ Deno.serve(async request=>{
     const {data:membership}=await userClient.from('organization_members').select('organization_id,role').eq('organization_id',body.organizationId).eq('user_id',user.id).maybeSingle()
     if(!membership)return json({error:'Organisation membership is required.'},403)
     if(body.action==='email_brief')return await emailBrief(client,body.organizationId,body.requestId,body.supplierId)
+    if(body.action==='sms_brief')return await smsBrief(client,body.organizationId,body.requestId,body.supplierId)
     const context=await quoteContext(client,body.organizationId,body.quoteId)
     if(body.action==='request_approval')return await requestApproval(client,body.organizationId,context)
     if(!['owner','admin'].includes(membership.role))return json({error:'Only an owner or administrator can issue a purchase order.'},403)
@@ -58,6 +59,28 @@ async function emailBrief(client:ReturnType<typeof createClient>,organizationId:
   const specification=[details.requiresHalal===true?'halal':details.requiresHalal===false?'no halal requirement':'',details.freshness,details.cut,details.item].filter(Boolean).join(' ')
   const text=`Hello ${supplier.name},\n\n${business} is seeking a quote for ${details.quantity} ${details.unit} of ${specification}, delivered to ${details.location} by ${details.deadline}. Maximum approved budget: AUD ${Number(details.budget).toFixed(2)}. Requested payment terms: ${Number(details.minimumPaymentDays||0)} days; maximum deposit: ${Number(details.maximumDepositPercent||0)}%.\n\nThis is a quote enquiry only. No order has been placed. Please reply with stock, exact product or substitution, final total including delivery and fees, delivery time, payment terms and deposit. Verify the request on ${callback}.\n\nSarah — SourcePilot AI procurement assistant for ${business}`
   return await sendEmail(client,{organizationId,requestId,supplierId,purpose:'supplier_brief',to:supplier.email,subject:`Quote request: ${details.quantity} ${details.unit} ${details.item}`,text,key:`supplier-brief/${requestId}/${supplierId}`})
+}
+
+async function smsBrief(client:ReturnType<typeof createClient>,organizationId:string,requestId?:string,supplierId?:string){
+  if(!requestId||!supplierId)return json({error:'Select a request and supplier.'},400)
+  const [{data:request},{data:supplier},{data:verification}]=await Promise.all([
+    client.from('procurement_requests').select('id,details').eq('id',requestId).eq('organization_id',organizationId).single(),
+    client.from('suppliers').select('id,name,phone,authorised,do_not_contact,time_zone').eq('id',supplierId).eq('organization_id',organizationId).single(),
+    client.from('supplier_verifications').select('active,name_matched,contact_confirmed,checked_at').eq('supplier_id',supplierId).eq('organization_id',organizationId).single(),
+  ])
+  if(!request||!supplier)return json({error:'Request or supplier was not found.'},404)
+  if(!supplier.authorised||supplier.do_not_contact||!verification?.active||!verification.name_matched||!verification.contact_confirmed||!fresh(verification.checked_at))return json({error:'SMS blocked: supplier authorisation, opt-out, or fresh ABR evidence failed.'},409)
+  if(!supplier.phone)return json({error:'Add a verified supplier phone number first.'},409)
+  const details=request.details as Record<string,unknown>,business=Deno.env.get('CALLING_BUSINESS_NAME')||'Your customer',callback=Deno.env.get('ELEVENLABS_CALLBACK_NUMBER')||''
+  if(!callback)return json({error:'A stable supplier callback number is required before SMS outreach.'},409)
+  let localHour=0
+  try{localHour=Number(new Intl.DateTimeFormat('en-AU',{timeZone:supplier.time_zone,hour:'2-digit',hourCycle:'h23'}).format(new Date()))}catch{return json({error:'Supplier time zone is invalid.'},409)}
+  if(localHour<8||localHour>=18)return json({error:'SMS held outside the supplier’s business hours.'},409)
+  const {count}=await client.from('communication_events').select('id',{count:'exact',head:true}).eq('organization_id',organizationId).eq('supplier_id',supplierId).eq('channel','sms').eq('purpose','supplier_brief').gte('created_at',new Date(Date.now()-86_400_000).toISOString()).neq('status','failed')
+  if((count||0)>=2)return json({error:'SMS held because this supplier already received two outreach messages in 24 hours.'},409)
+  const specification=[details.requiresHalal===true?'halal':'',details.freshness,details.cut,details.item].filter(Boolean).join(' ')
+  const message=`SourcePilot AI for ${business}: quote request for ${details.quantity} ${details.unit} ${specification}, due ${details.deadline}. No order placed. Sarah may call shortly. Callback ${callback}. Reply STOP to opt out.`
+  return await sendSms(client,{organizationId,requestId,supplierId,to:normalizeAustralianPhone(supplier.phone),body:message,key:`supplier-brief-sms/${requestId}/${supplierId}`,purpose:'supplier_brief'})
 }
 
 async function requestApproval(client:ReturnType<typeof createClient>,organizationId:string,context:Awaited<ReturnType<typeof quoteContext>>){
@@ -204,10 +227,10 @@ async function sendEmail(client:ReturnType<typeof createClient>,input:{organizat
   return json({status:'sent',providerId:body.id})
 }
 
-async function sendSms(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId:string;to:string;body:string;key:string;purpose?:'owner_approval'|'owner_completion'}){
+async function sendSms(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId?:string;to:string;body:string;key:string;purpose?:'supplier_brief'|'owner_approval'|'owner_completion'}){
   const sid=Deno.env.get('TWILIO_ACCOUNT_SID'),username=Deno.env.get('TWILIO_API_KEY_SID')||sid,password=Deno.env.get('TWILIO_API_KEY_SECRET')||Deno.env.get('TWILIO_AUTH_TOKEN'),from=Deno.env.get('TWILIO_SMS_FROM')
   if(!sid||!username||!password||!from)throw new Error('Twilio SMS secrets are incomplete.')
-  const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'sms',purpose:input.purpose||'owner_approval',recipient:input.to,status:'queued',payload:{body:input.body},idempotency_key:input.key})
+  const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId||null,channel:'sms',purpose:input.purpose||'owner_approval',recipient:input.to,status:'queued',payload:{body:input.body},idempotency_key:input.key})
   if(!created.created)return json({status:created.event.status,providerId:created.event.provider_id})
   const form=new URLSearchParams({To:input.to,From:normalizeAustralianPhone(from),Body:input.body})
   const response=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${btoa(`${username}:${password}`)}`,'Content-Type':'application/x-www-form-urlencoded'},body:form})
