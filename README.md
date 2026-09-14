@@ -2,6 +2,17 @@
 
 SourcePilot is a mobile-first voice procurement agent for Australian small businesses. Its AI assistant, Sarah, checks authorised, ABN-verified suppliers, calls them for quotes, compares the results, negotiates within approved limits, and presents the best option for purchase or confirmation.
 
+## Live demo
+
+- Website: [https://forward-rust.vercel.app/](https://forward-rust.vercel.app/)
+- Test email: `sharonshaun2301@gmail.com`
+
+Request the test password from the project team, or create an account with your own email.
+
+### Demo video
+
+[![Play the SourcePilot demo](https://img.youtube.com/vi/CrQwyHkrgFU/maxresdefault.jpg)](https://youtu.be/CrQwyHkrgFU)
+
 ## How it works
 
 1. The owner speaks or types a procurement request.
@@ -121,4 +132,4 @@ data/                  Researched supplier lead exports
 
 ## Prototype status
 
-The repository implements gap-driven intake clarification, ABR verification, importable evidence-backed web discovery, request-specific buying profiles, trust-gated ElevenLabs outbound queues, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, purchase orders backed by explicit approval or stored request-scoped pre-authorisation, and final owner notification with SMS plus AgentMail fallback when a call is not answered. These workflows require provider credentials and deployed Supabase functions; production hosting is not yet confirmed in the repository. Imported or discovered suppliers must be verified, reviewed, and authorised by an owner or administrator before SourcePilot can contact or buy from them.
+The repository implements gap-driven intake clarification, ABR verification, importable evidence-backed web discovery, request-specific buying profiles, trust-gated ElevenLabs outbound queues, HMAC-verified transcript/quote ingestion, supplier email, owner approval SMS, purchase orders backed by explicit approval or stored request-scoped pre-authorisation, and final owner notification with SMS plus AgentMail fallback when a call is not answered. A hosted demo is available at [forward-rust.vercel.app](https://forward-rust.vercel.app/); live provider workflows require their credentials and deployed Supabase functions. Imported or discovered suppliers must be verified, reviewed, and authorised by an owner or administrator before SourcePilot can contact or buy from them.
