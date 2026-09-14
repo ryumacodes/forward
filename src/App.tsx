@@ -172,7 +172,16 @@ export default function App() {
       {page === 'Call activity' && <IntakeNormalizer/>}
       <footer><span><ShieldCheck size={14}/> Your rules. Your budget. Sarah handles the rest.</span><span>All amounts in AUD <span className="footer-dot">·</span> {supabase ? 'Saved workspace' : 'Sample data'}</span></footer>
     </main></div>
-    {modal && <NewRequest onClose={() => setModal(false)} onCreate={async input => { const r = organization ? await saveProcurementRequest(input,organization.id) : input; setRequests(previous => [r,...previous]); setSelected(r.id); setMobileDetail(true); window.scrollTo({top:0}); setPage('Requests'); setTab('Overview'); setModal(false); notify(supabase ? 'Request saved. Authorise a verified supplier to start live outreach.' : 'Request created for this session. Live supplier calls are not connected in demo mode.') }}/>}
+    {modal && <NewRequest
+      onClose={() => setModal(false)}
+      onCreate={async (input,options) => {
+        const r = organization ? await saveProcurementRequest(input,organization.id) : input
+        setRequests(previous => [r,...previous]); setSelected(r.id); setMobileDetail(true)
+        window.scrollTo({top:0}); setPage('Requests'); setTab('Overview')
+        if(!options?.keepOpen)setModal(false)
+        notify(supabase ? 'Request saved. Authorise a verified supplier to start live outreach.' : 'Request created for this session. Live supplier calls are not connected in demo mode.')
+      }}
+    />}
     {transcript && <TranscriptDialog offer={transcript} onClose={()=>setTranscript(null)}/>}
     {notice && <div className="toast" role="status"><Activity size={19}/><span>{notice}</span><button aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={17}/></button></div>}
   </div>

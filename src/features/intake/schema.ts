@@ -39,7 +39,7 @@ export const intakeJsonSchema = {
 const DAY_WORD: Record<string,string> = {mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday',monday:'Monday',tuesday:'Tuesday',wednesday:'Wednesday',thursday:'Thursday',friday:'Friday',saturday:'Saturday',sunday:'Sunday'}
 const DAY_RE = /\b(mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|tomorrow|tonight|today)\b/i
 const TIME_RE = /\b(?:by|before)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i
-const CUT_WORDS = ['whole','breast','fillet','fillets','thigh','drumstick','wings','wing','boneless','bone-in','mince','diced','ground','sausage','leg']
+const CUT_WORDS = ['whole','breast','fillet','fillets','thigh','thighs','drumstick','wings','wing','boneless','bone-in','mince','diced','ground','sausage','leg']
 
 export function normalizeDeadline(text: string, now = new Date()): string | null {
   if (!text?.trim()) return null
@@ -80,7 +80,7 @@ export function previewNormalize(source: IntakeSource, text: string, now = new D
   const paymentDays=parsePaymentDays(text)
   const depositBps=parseDepositBps(text)
   const locationMatch=/\b(?:deliver(?:ed|y)?(?:\s+it)?\s+(?:to|at)|drop(?:ped)?(?:\s+it)?\s+(?:to|at)|send(?:\s+it)?\s+to)\s+([^,.]+?(?:,\s*[^,.]+?)?)(?=\s+(?:by|before|today|tomorrow|under|budget|max|net|and|with)\b|[.;]|$)/i.exec(normalizedText)
-  const itemMatch=/(?:need|supply|quote(?: for)?|want|get me|after)\s+(?:about\s+)?(.+?)(?=\s+(?:deliver(?:ed|y)?|drop(?:ped)?|send(?:\s+it)?\s+to)\b|\s+(?:by|before|today|tomorrow|tonight|under|budget|max|net|with)\b|[,.;]|$)/i.exec(normalizedText)
+  const itemMatch=/(?:need|supply|quote(?: for)?|want|get me|after|order(?: for)?)\s+(?:about\s+)?(.+?)(?=\s+(?:deliver(?:ed|y)?|drop(?:ped)?|send(?:\s+it)?\s+to)\b|\s+(?:by|before|today|tomorrow|tonight|under|budget|max|net|with)\b|[,.;]|$)/i.exec(normalizedText)
   let item=itemMatch?.[1]?.trim()??null
   if(item&&quantity){const escaped=quantity.evidence.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');item=item.replace(new RegExp(`^${escaped}\\s+(?:of\\s+)?`,'i'),'').trim()||null}
   const deadline=normalizeDeadline(normalizedText,now)

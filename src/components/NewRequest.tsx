@@ -5,6 +5,7 @@ import { VoiceOrb } from './VoiceOrb'
 import type { ProcurementRequest } from '../features/requests/data'
 import { normalizeProcurementIntake, type IntakeNormalization } from '../features/intake/normalize'
 import { parseSourcingMode } from '../features/requests/workflow'
+import { requestFromConfirmedVoiceIntake } from '../features/intake/request'
 type Recognition = { lang: string; continuous: boolean; interimResults: boolean; start: () => void; stop: () => void; onresult: ((event: { results: { transcript: string }[][] }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null }
 declare global {
   interface Window {
@@ -12,7 +13,7 @@ declare global {
     webkitSpeechRecognition?: new () => Recognition
   }
 }
-export function NewRequest({ onClose, onCreate }: { onClose: () => void; onCreate: (request: ProcurementRequest) => void | Promise<void> }) {
+export function NewRequest({ onClose, onCreate }: { onClose: () => void; onCreate: (request: ProcurementRequest, options?: {keepOpen?:boolean}) => void | Promise<void> }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const recognition = useRef<Recognition | null>(null)
   const [brief, setBrief] = useState('')
@@ -26,7 +27,23 @@ export function NewRequest({ onClose, onCreate }: { onClose: () => void; onCreat
   const [sourcingMode,setSourcingMode] = useState<NonNullable<ProcurementRequest['sourcingMode']>>('first_qualifying')
   const [normalization,setNormalization] = useState<IntakeNormalization | null>(null)
   const [draft,setDraft] = useState({item:'',quantity:'',unit:'kg',budget:'',deadline:'',location:'',minimumPaymentDays:'14',maximumDepositPercent:'0',halal:'',cut:'',freshness:''})
-  const agent = useVoiceAgent(text => setBrief(previous => `${previous} ${text}`.trim()))
+  const briefRef = useRef('')
+  const agent = useVoiceAgent(text => setBrief(previous => {
+    const next = `${previous} ${text}`.trim()
+    briefRef.current = next
+    return next
+  }), async intake => {
+    if (saving) throw new Error('The request is already being saved.')
+    setSaving(true);setSaveError('');setMessage('Saving confirmed request…')
+    try {
+      await onCreate(requestFromConfirmedVoiceIntake(intake,briefRef.current),{keepOpen:true})
+      window.setTimeout(onClose,2200)
+    } catch(error) {
+      const message = error instanceof Error ? error.message : 'Could not save request. Try again.'
+      setSaveError(message);setMessage('')
+      throw new Error(message)
+    } finally { setSaving(false) }
+  })
   const active = agent.configured ? !['idle', 'error'].includes(agent.signal.state) : listening
   const voiceLabel = agent.configured ? (agent.ready ? ({idle: 'Start conversation', connecting: 'Connecting…', listening: 'Listening · End conversation', thinking: 'Thinking · End conversation', speaking: 'Speaking · End conversation', error: 'Try again'}[agent.signal.state]) : 'Preparing voice…') : (listening ? 'Stop listening' : 'Tap to talk')
   useEffect(() => { dialog.current?.showModal(); return () => recognition.current?.stop() }, [])
@@ -80,8 +97,8 @@ export function NewRequest({ onClose, onCreate }: { onClose: () => void; onCreat
     <div className="modal-head"><div><span className="eyebrow">SOURCEPILOT VOICE</span><h2 id="voice-dialog-title">{details ? 'Review your request' : 'Sarah'}</h2></div><button type="button" className="icon-button" aria-label="Close voice conversation" onClick={onClose}><X size={22}/></button></div>
     <p className="muted">{details ? 'Check the structured details before Sarah starts sourcing.' : active ? voiceLabel.split(' ·')[0] : 'Tell Sarah what you need, naturally.'}</p>
     <button type="button" className={`voice-capture ${active ? 'listening' : ''}`} onClick={listen} disabled={agent.configured && !agent.ready} aria-pressed={active} aria-label={voiceLabel}><VoiceOrb listening={listening} signal={agent.configured ? agent.signal : undefined} size={224}/><strong>{voiceLabel}</strong><span>“30 kilos of chicken tomorrow before 8, max $350.”</span></button>
-    <label className="brief-label"><span>Your request</span><textarea value={brief} onChange={e => {setBrief(e.target.value);setNormalization(null)}} placeholder="Message Sarah…" rows={3}/></label>
-    {agent.configured && <p className="voice-message" role="status">{agent.signal.state === 'error' ? 'Could not connect. Check microphone permission and agent configuration, then try again.' : `ElevenLabs conversation · ${agent.signal.state}`}</p>}
+    <label className="brief-label"><span>Your request</span><textarea value={brief} onChange={e => {setBrief(e.target.value);briefRef.current=e.target.value;setNormalization(null)}} placeholder="Message Sarah…" rows={3}/></label>
+    {agent.configured && <p className="voice-message" role={agent.signal.state === 'error' ? 'alert' : 'status'}>{agent.signal.state === 'error' ? agent.errorMessage : `ElevenLabs conversation · ${agent.signal.state}`}</p>}
     {message && <p className="voice-message" role="status">{message}</p>}
     <details className="request-preferences"><summary>Auto-buy & payment rules</summary><div className="form-note"><ShieldCheck size={20}/><span>Only exact quotes from your authorised, ABN-verified suppliers can use these rules.<br/><small>No substitutions, missing terms, or over-budget orders.</small></span></div>
     <label>Buying profile<select name="buyingProfile" defaultValue="hospitality"><option value="hospitality">Hospitality & perishables</option><option value="construction">Construction & urgent materials</option><option value="general">General wholesale</option></select></label>

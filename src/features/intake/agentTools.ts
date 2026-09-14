@@ -1,5 +1,5 @@
 import { normalizeDeadline, previewNormalize, type IntakeSource, type NormalizedIntake } from './schema'
-import { clarifyQuestions, applyResponse, canonicalIntakeField, confirmIntake, isIntakeResponseUnderstood, missingFieldsOf } from './clarify'
+import { clarifyQuestions, compactClarification, applyCompactResponse, applyResponse, canonicalIntakeField, confirmIntake, isIntakeResponseUnderstood, missingFieldsOf } from './clarify'
 import { canonicalUnit } from './speech'
 import { parseSourcingMode } from '../requests/workflow'
 
@@ -30,30 +30,30 @@ export const intakeClientTools = {
       paymentDays: args.paymentDays ?? parsed?.paymentDays ?? null,
       depositBps:args.depositBps ?? parsed?.depositBps ?? null,
     }
-    const questions = clarifyQuestions(intake)
+    const question = compactClarification(intake)
     const sourcingMode=args.sourcingMode ?? parseSourcingMode(args.requestText ?? '') ?? 'first_qualifying'
-    if (questions.length === 0) return json({ok:true, allClear:true, sourcingMode, intake, note:'No gaps remain. Confirm the details back to the caller.'})
-    return json({ok:true, allClear:false, sourcingMode, intake, askNext:questions[0], remaining:Math.max(0,missingFieldsOf(intake as NormalizedIntake).length - 1)})
+    if (!question) return json({ok:true, allClear:true, sourcingMode, intake, note:'No gaps remain. Confirm the details back to the caller.'})
+    return json({ok:true, allClear:false, sourcingMode, intake, askNext:question, missingFields:missingFieldsOf(intake as NormalizedIntake), remainingPrompts:1,conversationRule:'Ask this one combined question with no preamble.'})
   },
   apply_intake_answer: (parameters: IntakeAnswerInput | undefined) => {
     const args = parameters ?? {field:'item', response:''}
     if (typeof args.field !== 'string' || typeof args.response !== 'string' || !args.response.trim()) return json({error:'Provide the field and the caller’s spoken answer.'})
     const intake = {...intakeBase(args.intake), evidence:[...(args.intake?.evidence ?? [])]}
-    const updated = applyResponse(intake, args.field, args.response)
+    const batch = args.field === 'missingDetails'
+    const updated = batch ? applyCompactResponse(intake,args.response) : applyResponse(intake, args.field, args.response)
     updated.missingFields = missingFieldsOf(updated)
-    const questions = clarifyQuestions(updated)
     const confirm = updated.missingFields.length === 0 ? confirmIntake(updated as NormalizedIntake) : null
     const canonicalField = canonicalIntakeField(args.field)
-    const understood = isIntakeResponseUnderstood(canonicalField, args.response)
-    const retry = understood ? null : clarificationFor(canonicalField, updated)
-    return json({ok:true, understood, intake:{...updated}, missingFields:updated.missingFields, continueAsking:retry ?? questions[0] ?? null, confirm})
+    const understood = batch ? updated.missingFields.length < missingFieldsOf(intake).length : isIntakeResponseUnderstood(canonicalField, args.response)
+    const retry = batch ? compactClarification(updated) : understood ? null : clarificationFor(canonicalField, updated)
+    return json({ok:true, understood, intake:{...updated}, missingFields:updated.missingFields, continueAsking:retry, confirm})
   },
   confirm_intake: (parameters: {intake?: Partial<NormalizedIntake> & {missingFields?: string[]}} | undefined) => {
     const args = parameters ?? {}
     const intake = intakeBase(args.intake)
     const missingFields = missingFieldsOf(intake)
-    if (missingFields.length) return json({ok:false,error:'The request is incomplete. Ask for every missing detail before confirmation.',missingFields,askNext:clarifyQuestions(intake)[0]})
-    return json({ok:true, script:confirmIntake(intake)})
+    if (missingFields.length) return json({ok:false,error:'The request is incomplete. Ask for every missing detail together.',missingFields,askNext:compactClarification(intake)})
+    return json({ok:true, script:confirmIntake(intake),afterConfirmation:'When the caller confirms, say “Okay — request captured.” and end the conversation immediately.'})
   },
 }
 

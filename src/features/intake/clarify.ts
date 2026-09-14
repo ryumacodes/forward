@@ -8,6 +8,13 @@ export type ClarifyQuestion = {
   options?: string[]
 }
 
+const FIELD_LABELS: Record<string,string> = {
+  item:'product', quantity:'quantity and unit', deadline:'delivery date and time',
+  deliveryLocation:'delivery address', budget:'budget', payment:'payment terms',
+  deposit:'deposit limit', halal:'whether halal is required', cut:'cut or format',
+  freshness:'fresh, frozen, or either',
+}
+
 const MEAT_RE = /meat|chicken|beef|lamb|goat|poultry|veal|duck|turkey|halal/i
 
 export function isMeatItem(item: string | null | undefined) {
@@ -48,7 +55,18 @@ export function clarifyQuestions(intake: NormalizedIntake | Partial<NormalizedIn
   return questions.slice(0, limits.haltAfter)
 }
 
-const CUT_WORDS = ['whole','breast','fillet','fillets','thigh','drumstick','drumsticks','wing','wings','boneless','bone-in','mince','diced','ground','sausage','leg','split']
+export function compactClarification(intake: NormalizedIntake | Partial<NormalizedIntake>): ClarifyQuestion | null {
+  const missing = missingFieldsOf(intake as NormalizedIntake)
+  if (!missing.length) return null
+  const labels = missing.map(field => FIELD_LABELS[field] ?? field)
+  const joined = labels.length === 1 ? labels[0] : `${labels.slice(0,-1).join(', ')}, and ${labels.at(-1)}`
+  return {
+    field:'missingDetails',
+    prompt:`Just give me ${joined}, together in one answer.`,
+  }
+}
+
+const CUT_WORDS = ['whole','breast','fillet','fillets','thigh','thighs','drumstick','drumsticks','wing','wings','boneless','bone-in','mince','diced','ground','sausage','leg','split']
 
 export function parseCut(text: string): string | null {
   const match = new RegExp(`(?:\\.\\s*)?\\b(${CUT_WORDS.join('|')})\\b`,'i').exec(text)
@@ -65,7 +83,9 @@ function parseItem(response: string) {
 }
 
 function parseDeliveryLocation(response: string) {
-  const location = correctionTail(response).replace(/^(?:deliver(?:y|ed)?(?:\s+it)?\s+(?:to|at)|send(?:\s+it)?\s+to|to)\s+/i,'').trim().slice(0,200)
+  const corrected = correctionTail(response)
+  const clause = /(?:deliver(?:y|ed)?(?:\s+it)?\s+(?:to|at)|send(?:\s+it)?\s+to|drop(?:ped)?(?:\s+it)?\s+(?:to|at)|\bto)\s+(.+?)(?=,\s*(?:due|net|payment|deposit|halal|fresh|frozen|either|whole|breast|thigh|drumstick)\b|[.;]|$)/i.exec(corrected)
+  const location = (clause?.[1] ?? corrected.replace(/^(?:deliver(?:y|ed)?(?:\s+it)?\s+(?:to|at)|send(?:\s+it)?\s+to|to)\s+/i,'')).trim().slice(0,200)
   return /\d+\s+\S+|\b(?:vic|nsw|qld|wa|sa|tas|nt|act)\s*\d{4}\b/i.test(location) ? location : null
 }
 
@@ -145,6 +165,12 @@ export function applyResponse(intake: NormalizedIntake, field: string, response:
   next.confidence = next.missingFields.length === 0 ? 1 : Math.max(0, 1 - next.missingFields.length / 10)
   next.evidence.push({field:canonicalField, text:response.trim().slice(0, 200)})
   return next
+}
+
+export function applyCompactResponse(intake: NormalizedIntake, response: string): NormalizedIntake {
+  let updated = intake
+  for (const field of missingFieldsOf(intake)) updated = applyResponse(updated, field, response)
+  return updated
 }
 
 export function confirmIntake(intake: NormalizedIntake): string {

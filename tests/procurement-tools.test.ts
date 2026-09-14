@@ -17,6 +17,7 @@ import { canPurchase } from '../src/features/requests/ranking'
 import { checkSupplies, allSupplyLeads } from '../src/features/supplycheck/engine'
 import { createDemoSeed } from '../src/features/requests/data'
 import { completionSummary } from '../src/features/communications/completion'
+import { decideQuoteDisposition } from '../src/features/requests/workflow'
 const input={quantity:'30',unitPrice:'10.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'0',budget:'350'}
 test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51 824 753 556')).toBe(true)
@@ -76,6 +77,46 @@ test('a qualifying quote can use request-scoped pre-authorisation',()=>{
  const offer={id:'Q-1',name:'Supplier',initials:'S',quantity:30,price:315,delivery:'2026-09-13T07:00',onTime:true,exact:true,minutes:'1m',paymentDays:14,depositPercent:0,fees:0,originalPaymentDays:0,onTimeDeliveries:10,completedOrders:10,authorised:true,abnVerified:true,termsConfirmed:true}
  expect(canPurchase(offer,request)).toBe(true)
  expect(canPurchase({...offer,exact:false},request)).toBe(false)
+})
+test('FreshFoods pre-authorised negotiation stays inside every purchasing boundary',()=>{
+ const policy={...defaultNegotiationPolicy,maximumTotalCents:26_000n,minimumPaymentDays:0,maximumDepositBps:1_000,autoPurchase:true}
+ const opening=calculateQuote({quantity:'40',unitPrice:'7',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'30',budget:'260'})
+ expect(opening.total).toBe(28_000n)
+ expect(opening.deposit).toBe(8_400n)
+ expect(evaluateNegotiation(policy,{totalCents:opening.total,paymentDays:0,depositBps:3_000,counteroffersMade:0,isSubstitution:false,termsConfirmed:true})).toMatchObject({action:'counter',reasons:['Total exceeds the approved budget','Deposit exceeds the approved limit']})
+
+ const agreed=calculateQuote({quantity:'40',unitPrice:'6.50',discount:'0',delivery:'0',fees:'0',taxRate:'0',deposit:'10',budget:'260'})
+ expect(agreed.total).toBe(26_000n)
+ expect(agreed.deposit).toBe(2_600n)
+ expect(evaluateNegotiation(policy,{totalCents:agreed.total,paymentDays:0,depositBps:1_000,counteroffersMade:1,isSubstitution:false,termsConfirmed:true})).toEqual({action:'accept',reasons:['All purchase rules passed'],canMentionMarketPrice:true})
+
+ const request={id:'REQ-FRESHFOODS',item:'chicken thighs',quantity:40,unit:'kg',budget:260,deadline:'2026-09-18T17:00',location:'Michelle’s Restaurant',status:'Calling suppliers' as const,category:'Poultry',sourcingMode:'first_qualifying' as const,purchaseMode:'preauthorized' as const,minimumPaymentDays:0,maximumDepositPercent:10}
+ const offer={id:'Q-FRESHFOODS',name:'FreshFoods',initials:'FF',quantity:40,price:260,delivery:'2026-09-18T17:00',onTime:true,exact:true,minutes:'45s',paymentDays:0,depositPercent:10,fees:0,originalPaymentDays:0,onTimeDeliveries:1,completedOrders:1,authorised:true,abnVerified:true,termsConfirmed:true}
+ expect(canPurchase(offer,request)).toBe(true)
+ expect(decideQuoteDisposition({sourcingMode:request.sourcingMode,purchaseMode:request.purchaseMode,quoteQualifies:canPurchase(offer,request)})).toBe('auto_purchase')
+ expect(canPurchase({...offer,price:260.01},request)).toBe(false)
+ expect(canPurchase({...offer,depositPercent:10.01},request)).toBe(false)
+ expect(canPurchase({...offer,quantity:39.99},request)).toBe(false)
+ expect(canPurchase({...offer,onTime:false},request)).toBe(false)
+ const notice=completionSummary({poNumber:'SP-FRESHFOODS-1',supplierName:'FreshFoods',item:request.item,quantity:offer.quantity,unit:request.unit,totalCents:Number(agreed.total),deliveryTime:offer.delivery,paymentDays:offer.paymentDays,depositBps:1_000})
+ expect(notice).toContain('FreshFoods')
+ expect(notice).toContain('40 kg')
+ expect(notice).toContain('AUD 260.00')
+ expect(notice).toContain('deposit 10%')
+ expect(notice).toContain('no automatic payment was made')
+})
+test('scenario wording extracts the commercial terms without inventing unstated product requirements',()=>{
+ const request='Sarah, call FreshFoods and negotiate an order for 40 kilograms of chicken thighs, delivered by Friday. My maximum budget is $260, with a deposit no higher than 10 per cent. If every condition is met, you can send one purchase order.'
+ const result=previewNormalize('voice_call',request,new Date('2026-09-14T10:00:00+10:00'))
+ expect(result.item).toBe('chicken thighs')
+ expect(result.quantity).toBe(40)
+ expect(result.unit).toBe('kg')
+ expect(result.budgetCents).toBe(26_000)
+ expect(result.depositBps).toBe(1_000)
+ expect(result.halal).toBeNull()
+ expect(result.missingFields).toContain('deadline')
+ expect(result.missingFields).toContain('deliveryLocation')
+ expect(result.missingFields).toContain('payment')
 })
 test('live discovery profile score changes with request priorities',()=>{
  const evidence={semanticScore:.82,confidence:.9,locality:'Sydney NSW',location:'Melbourne VIC',products:['commercial chicken']}
@@ -197,7 +238,8 @@ test('intake client tool returns next question then a confirmation script',()=>{
  const first=JSON.parse(intakeClientTools.clarify_intake_details({item:'chicken',quantity:30,unit:'kg'}))
  expect(first.ok).toBe(true)
  expect(first.allClear).toBe(false)
- expect(first.askNext.field).toBe('halal')
+ expect(first.askNext.field).toBe('missingDetails')
+ expect(first.askNext.prompt).toContain('whether halal is required')
  const answered=JSON.parse(intakeClientTools.apply_intake_answer({intake:{item:'chicken',quantity:30,unit:'kg'},field:'halal',response:'Yes, halal'}))
  expect(answered.ok).toBe(true)
  expect(answered.missingFields).toContain('cut')

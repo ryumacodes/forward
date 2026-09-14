@@ -8,7 +8,8 @@ const required = {
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
   TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+  TWILIO_USERNAME: process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID,
+  TWILIO_PASSWORD: process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN,
   TWILIO_SMS_FROM: process.env.TWILIO_SMS_FROM,
   ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
   ELEVENLABS_AGENT_ID: process.env.ELEVENLABS_OWNER_NOTIFICATION_AGENT_ID || process.env.ELEVENLABS_AGENT_ID,
@@ -26,7 +27,7 @@ if (!twilioFrom) throw new Error('Live communication preflight failed. TWILIO_SM
 
 const [resendCheck, twilioCheck, elevenLabsCheck] = await Promise.all([
   fetch('https://api.resend.com/domains', {headers: {Authorization: `Bearer ${required.RESEND_API_KEY}`}}),
-  fetch(`https://api.twilio.com/2010-04-01/Accounts/${required.TWILIO_ACCOUNT_SID}.json`, {headers: {Authorization: `Basic ${btoa(`${required.TWILIO_ACCOUNT_SID}:${required.TWILIO_AUTH_TOKEN}`)}`}}),
+  fetch(`https://api.twilio.com/2010-04-01/Accounts/${required.TWILIO_ACCOUNT_SID}.json`, {headers: {Authorization: `Basic ${btoa(`${required.TWILIO_USERNAME}:${required.TWILIO_PASSWORD}`)}`}}),
   fetch('https://api.elevenlabs.io/v1/convai/phone-numbers', {headers: {'xi-api-key': required.ELEVENLABS_API_KEY ?? ''}}),
 ])
 const phoneInventory = await elevenLabsCheck.json().catch(() => ({})) as {phone_numbers?: Array<{phone_number_id?: string; id?: string}>}
@@ -58,7 +59,7 @@ for (const to of emails) {
 const smsForm = new URLSearchParams({To: phone, From: twilioFrom, Body: smsText})
 const smsResponse = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${required.TWILIO_ACCOUNT_SID}/Messages.json`, {
   method: 'POST',
-  headers: {Authorization: `Basic ${btoa(`${required.TWILIO_ACCOUNT_SID}:${required.TWILIO_AUTH_TOKEN}`)}`, 'Content-Type': 'application/x-www-form-urlencoded'},
+  headers: {Authorization: `Basic ${btoa(`${required.TWILIO_USERNAME}:${required.TWILIO_PASSWORD}`)}`, 'Content-Type': 'application/x-www-form-urlencoded'},
   body: smsForm,
 })
 const smsBody = await smsResponse.json().catch(() => ({})) as {sid?: string; status?: string; message?: string}

@@ -69,7 +69,7 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 ```
 
-`OPENAI_API_KEY` is a server-side Supabase Edge Function secret. Do not expose it through a `VITE_` variable.
+`OPENAI_API_KEY` is a server-side Supabase Edge Function secret. Do not expose it through a `VITE_` variable. Twilio API-key authentication is supported with `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, and `TWILIO_API_KEY_SECRET`; `TWILIO_AUTH_TOKEN` remains a fallback.
 
 ## Supabase setup
 

@@ -3,6 +3,7 @@ import { intakeClientTools } from '../src/features/intake/agentTools'
 import { applyResponse, clarifyQuestions } from '../src/features/intake/clarify'
 import { normalizeDeadline, previewNormalize } from '../src/features/intake/schema'
 import { parseDepositBps, parseHalalRequirement, parseMoneyCents, parsePaymentDays, parseQuantity } from '../src/features/intake/speech'
+import { requestFromConfirmedVoiceIntake } from '../src/features/intake/request'
 
 test('Australian quantity and money expressions normalize deterministically', () => {
   expect(parseQuantity('thirty kay')).toMatchObject({quantity: 30, unit: 'kg'})
@@ -93,22 +94,53 @@ test('confirmation is blocked until every delivery and payment detail is supplie
   expect(response.missingFields).toContain('deliveryLocation')
   expect(response.missingFields).toContain('payment')
   expect(response.missingFields).toContain('deposit')
-  expect(response.askNext.field).toBe('halal')
+  expect(response.askNext.field).toBe('missingDetails')
+  expect(response.askNext.prompt).toContain('whether halal is required')
 })
 
-test('Sarah asks one precise next question while retaining the complete gap count', () => {
+test('Sarah groups every missing detail into one compact question', () => {
   const intake = previewNormalize('voice_call', 'Need a coupla boxes of compostable cups')
   const questions = clarifyQuestions(intake)
   const response = JSON.parse(intakeClientTools.clarify_intake_details(intake))
   expect(questions.map(question => question.field)).toEqual(['deadline', 'deliveryLocation', 'budget', 'payment', 'deposit'])
-  expect(response.askNext.field).toBe('deadline')
-  expect(response.askNext.prompt).toContain('exact date and time')
-  expect(response.remaining).toBe(4)
+  expect(response.askNext.field).toBe('missingDetails')
+  expect(response.askNext.prompt).toContain('delivery date and time')
+  expect(response.askNext.prompt).toContain('deposit limit')
+  expect(response.missingFields).toEqual(['budget', 'deadline', 'deliveryLocation', 'payment', 'deposit'])
+  expect(response.remainingPrompts).toBe(1)
 })
 
 test('initial voice tool deterministically recovers fields omitted by the language model', () => {
   const response = JSON.parse(intakeClientTools.clarify_intake_details({requestText:'I need a coupla boxes of chicken, mate. Shop around and compare the best price.',item:'chicken',unit:'boxes',sourcingMode:'compare'}))
   expect(response.sourcingMode).toBe('compare')
-  expect(response.askNext.field).toBe('halal')
-  expect(response.remaining).toBe(7)
+  expect(response.askNext.field).toBe('missingDetails')
+  expect(response.askNext.prompt).toContain('whether halal is required')
+  expect(response.remainingPrompts).toBe(1)
+})
+
+test('one combined answer can complete the request and move directly to confirmation', () => {
+  const first = JSON.parse(intakeClientTools.clarify_intake_details({requestText:'Need 40 kg chicken thighs by Friday, maximum budget 260 dollars, deposit no higher than 10 percent'}))
+  expect(first.askNext.field).toBe('missingDetails')
+  const answered = JSON.parse(intakeClientTools.apply_intake_answer({
+    intake:first.intake,
+    field:'missingDetails',
+    response:'Friday at 5 pm, deliver to 24 Flinders Lane Melbourne VIC 3000, due on delivery, no halal requirement, fresh chicken thighs.',
+  }))
+  expect(answered.missingFields).toEqual([])
+  expect(answered.intake.deliveryLocation).toBe('24 Flinders Lane Melbourne VIC 3000')
+  expect(answered.intake.cut).toBe('thighs')
+  expect(answered.confirm).toContain('Is that right')
+  const confirmed = JSON.parse(intakeClientTools.confirm_intake({intake:answered.intake}))
+  expect(confirmed.afterConfirmation).toContain('end the conversation immediately')
+})
+
+test('a confirmed voice intake becomes a persisted request payload', () => {
+  const request = requestFromConfirmedVoiceIntake({
+    item:'chicken thighs',quantity:40,unit:'kg',budgetCents:26_000,
+    deadline:'2026-09-18T17:00',deliveryLocation:'24 Flinders Lane Melbourne VIC 3000',
+    paymentDays:0,depositBps:1_000,halal:false,cut:'thighs',freshness:'fresh',
+    sourcingMode:'first_qualifying',
+  },'original voice transcript')
+  expect(request).toMatchObject({item:'chicken thighs',quantity:40,unit:'kg',budget:260,status:'Ready to source',purchaseMode:'preauthorized',maximumDepositPercent:10,brief:'original voice transcript'})
+  expect(() => requestFromConfirmedVoiceIntake({item:'chicken thighs'})).toThrow('Request is still missing')
 })

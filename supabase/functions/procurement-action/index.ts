@@ -205,12 +205,12 @@ async function sendEmail(client:ReturnType<typeof createClient>,input:{organizat
 }
 
 async function sendSms(client:ReturnType<typeof createClient>,input:{organizationId:string;requestId:string;supplierId:string;quoteId:string;to:string;body:string;key:string;purpose?:'owner_approval'|'owner_completion'}){
-  const sid=Deno.env.get('TWILIO_ACCOUNT_SID'),token=Deno.env.get('TWILIO_AUTH_TOKEN'),from=Deno.env.get('TWILIO_SMS_FROM')
-  if(!sid||!token||!from)throw new Error('Twilio SMS secrets are incomplete.')
+  const sid=Deno.env.get('TWILIO_ACCOUNT_SID'),username=Deno.env.get('TWILIO_API_KEY_SID')||sid,password=Deno.env.get('TWILIO_API_KEY_SECRET')||Deno.env.get('TWILIO_AUTH_TOKEN'),from=Deno.env.get('TWILIO_SMS_FROM')
+  if(!sid||!username||!password||!from)throw new Error('Twilio SMS secrets are incomplete.')
   const created=await createEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'sms',purpose:input.purpose||'owner_approval',recipient:input.to,status:'queued',payload:{body:input.body},idempotency_key:input.key})
   if(!created.created)return json({status:created.event.status,providerId:created.event.provider_id})
   const form=new URLSearchParams({To:input.to,From:normalizeAustralianPhone(from),Body:input.body})
-  const response=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${btoa(`${sid}:${token}`)}`,'Content-Type':'application/x-www-form-urlencoded'},body:form})
+  const response=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${btoa(`${username}:${password}`)}`,'Content-Type':'application/x-www-form-urlencoded'},body:form})
   const body=await response.json().catch(()=>({})) as {sid?:string;status?:string;message?:string}
   if(!response.ok||!body.sid){await client.from('communication_events').update({status:'failed',provider_error:body.message||`Twilio returned ${response.status}`}).eq('id',created.event.id);return json({error:body.message||'SMS provider failed.'},502)}
   await client.from('communication_events').update({status:'sent',provider_id:body.sid,sent_at:new Date().toISOString()}).eq('id',created.event.id)

@@ -13,13 +13,13 @@ export async function sendMissedOwnerCallFallback(client:SupabaseClient,input:Fa
 }
 
 async function sendSms(client:SupabaseClient,input:FallbackInput){
-  const sid=Deno.env.get('TWILIO_ACCOUNT_SID'),token=Deno.env.get('TWILIO_AUTH_TOKEN'),from=Deno.env.get('TWILIO_SMS_FROM')
-  if(!sid||!token||!from)throw new Error('Twilio SMS secrets are incomplete.')
+  const sid=Deno.env.get('TWILIO_ACCOUNT_SID'),username=Deno.env.get('TWILIO_API_KEY_SID')||sid,password=Deno.env.get('TWILIO_API_KEY_SECRET')||Deno.env.get('TWILIO_AUTH_TOKEN'),from=Deno.env.get('TWILIO_SMS_FROM')
+  if(!sid||!username||!password||!from)throw new Error('Twilio SMS secrets are incomplete.')
   const message=`We couldn't reach you by phone. ${input.summary}`
   const event=await claimEvent(client,{organization_id:input.organizationId,request_id:input.requestId,supplier_id:input.supplierId,quote_id:input.quoteId,channel:'sms',purpose:'owner_completion',recipient:normalizeAustralianPhone(input.phone),status:'queued',payload:{body:message,reason:input.reason},idempotency_key:`owner-missed-call-sms/${input.quoteId}`})
   if(!event)return
   const form=new URLSearchParams({To:normalizeAustralianPhone(input.phone),From:normalizeAustralianPhone(from),Body:message})
-  const response=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${btoa(`${sid}:${token}`)}`,'Content-Type':'application/x-www-form-urlencoded'},body:form})
+  const response=await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,{method:'POST',headers:{Authorization:`Basic ${btoa(`${username}:${password}`)}`,'Content-Type':'application/x-www-form-urlencoded'},body:form})
   const body=await response.json().catch(()=>({})) as {sid?:string;message?:string}
   if(!response.ok||!body.sid){const message=body.message||`Twilio returned ${response.status}`;await failEvent(client,event.id,message);throw new Error(message)}
   await markSent(client,event.id,body.sid)

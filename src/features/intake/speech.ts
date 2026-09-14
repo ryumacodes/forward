@@ -131,8 +131,15 @@ export function parseHalalRequirement(value: string): boolean | null {
   text = text
     .replace(/\b(?:yeah\s+nah|not halal|no halal|doesn'?t need to be halal|not fussed(?:\s+about halal)?|doesn'?t matter(?:\s+if it'?s halal)?|either is fine|any is fine)\b/g, ' negativeanswer ')
     .replace(/\b(?:nah\s+yeah|must be halal|needs? to be halal|halal required|certified halal)\b/g, ' positiveanswer ')
-  const cues = [...text.matchAll(/\b(positiveanswer|negativeanswer|yes|yeah|yep|definitely|must|certified|halal|no|nah|nope)\b/g)]
+  const explicit = [...text.matchAll(/\b(positiveanswer|negativeanswer|halal)\b/g)]
+  const explicitCue = explicit.at(-1)?.[1]
+  if (explicitCue) return explicitCue !== 'negativeanswer'
+  // Bare yes/no is valid for the dedicated clarification question, but an
+  // unrelated phrase such as "deposit no higher than 10%" must not silently
+  // become a halal preference while normalising a full request.
+  if (text.trim().split(/\s+/).length > 6) return null
+  const cues = [...text.matchAll(/\b(yes|yeah|yep|definitely|no|nah|nope)\b/g)]
   const cue = cues.at(-1)?.[1]
   if (!cue) return null
-  return !['negativeanswer', 'no', 'nah', 'nope'].includes(cue)
+  return !['no', 'nah', 'nope'].includes(cue)
 }
