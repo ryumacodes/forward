@@ -10,9 +10,7 @@ Sign in with your account, or create one with your email.
 
 ### Demo video
 
-[![Watch the SourcePilot demo](https://img.youtube.com/vi/LPQHzoy2-IE/maxresdefault.jpg)](https://youtu.be/LPQHzoy2-IE?si=vnratMr55_OpNouz)
-
-[Watch the SourcePilot demo on YouTube](https://youtu.be/LPQHzoy2-IE?si=vnratMr55_OpNouz)
+[Watch the SourcePilot demo on YouTube](https://youtu.be/CrQwyHkrgFU)
 
 ## How it works
 
