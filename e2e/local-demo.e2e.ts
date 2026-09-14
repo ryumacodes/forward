@@ -1,0 +1,18 @@
+import { expect, test } from '@playwright/test'
+
+test('local discovery, persistence, and real-time negotiation complete without provider credentials',async({page,context})=>{
+  const errors:string[]=[]
+  page.on('console',message=>{if(message.type()==='error')errors.push(message.text())})
+  page.on('pageerror',error=>errors.push(error.message))
+  await page.route('**/api/local-demo/discover',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({suppliers:[{id:'evidence-1',name:'Current Public Supplier',websiteUrl:'https://supplier.example/',locality:'Melbourne VIC',summary:'Public page retrieved during this test.',products:['chicken','breast'],phone:'03 9000 0000',email:'quotes@supplier.example',abn:null,confidence:.9,semanticScore:.92,profileScore:88,sources:[{url:'https://supplier.example/',title:'Supplier public website'}],evidenceCheckedAt:new Date().toISOString(),mode:'live'}]})}))
+  await page.goto('/');await page.getByRole('button',{name:/enter workspace/i}).click();await page.getByRole('button',{name:'Suppliers',exact:true}).click()
+  await expect(page.getByText('Isolated local sandbox')).toBeVisible()
+  await page.getByRole('button',{name:'Find live suppliers'}).click();await expect(page.getByText('Current Public Supplier')).toBeVisible();await page.getByRole('button',{name:'Import supplier lead'}).click();await expect(page.getByRole('heading',{name:'Current Public Supplier'})).toBeVisible()
+  await page.getByRole('button',{name:'Add temporary supplier'}).click();const card=page.locator('.registry-record').filter({hasText:'Demo Supplier Responder'});await card.getByRole('button',{name:'Run registry simulation'}).click();await expect(card).toContainText('Simulated registry status passed')
+  const popupPromise=context.waitForEvent('page');await card.getByRole('button',{name:'Authorise & open call simulator'}).click();const supplier=await popupPromise;const supplierErrors:string[]=[];supplier.on('console',message=>{if(message.type()==='error')supplierErrors.push(message.text())});supplier.on('pageerror',error=>supplierErrors.push(error.message));await supplier.getByRole('button',{name:'Answer simulated call'}).click()
+  await supplier.getByLabel('What the supplier says').fill('We can do 30 kilos for $392, net 0 days and a 20 percent deposit.');await supplier.getByRole('button',{name:'Send quote to Sarah'}).click();await expect(supplier.getByText(/cannot agree.*exceeds the approved budget/i)).toBeVisible()
+  await supplier.getByLabel('What the supplier says').fill('Final offer: 30 kilos for $330, net 14 days and 0 percent deposit, exact requested product.');await supplier.getByRole('button',{name:'Send quote to Sarah'}).click();await expect(supplier.getByRole('heading',{name:'Call completed'})).toBeVisible();await expect(page.getByRole('status')).toContainText('Simulated supplier call completed')
+  await page.getByRole('button',{name:'Call activity',exact:true}).click();const callRow=page.getByRole('button',{name:/Demo Supplier Responder/});await expect(callRow).toBeVisible();await callRow.click();const transcript=page.getByRole('dialog',{name:'Call transcript'});await expect(transcript).toContainText('We can do 30 kilos for $392');await expect(transcript).toContainText('Final offer: 30 kilos for $330');await transcript.getByRole('button',{name:/Back to workspace/}).click()
+  await page.reload();await page.getByRole('button',{name:/enter workspace/i}).click();await page.getByRole('button',{name:'Suppliers',exact:true}).click();await expect(page.getByRole('heading',{name:'Demo Supplier Responder',level:3})).toBeVisible()
+  expect([...errors,...supplierErrors]).toEqual([])
+})

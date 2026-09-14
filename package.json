@@ -13,6 +13,7 @@
     "video:still:order": "remotion still remotion/index.ts ClosingOrder out/sourcepilot-closing-order.png --frame=390",
     "preview": "vite preview --host 0.0.0.0",
     "test:e2e": "playwright test",
+    "test:local-demo": "playwright test --config playwright.local-demo.config.ts",
     "test:cdp": "bun run scripts/cdp-live-e2e.ts",
     "test:voice-provider": "bun run scripts/cdp-voice-provider-e2e.ts",
     "test:communications-live": "bun run scripts/live-communications-e2e.ts",

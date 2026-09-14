@@ -11,7 +11,10 @@ import './registry.css'
 import './landing.css'
 import './polish.css'
 import './team.css'
+import './local-demo.css'
+import { LocalSupplierSimulator } from './components/LocalSupplierSimulator'
 function Root() {
+  if(new URLSearchParams(location.search).has('supplier-simulator'))return <LocalSupplierSimulator/>
   const [started,setStarted] = useState(false)
   if (!started) return <LandingPage onStart={() => setStarted(true)}/>
   return <AuthGate onBack={() => setStarted(false)}><App/></AuthGate>

@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.e2e.ts',
+  testIgnore: '**/local-demo.e2e.ts',
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
@@ -18,7 +19,7 @@ export default defineConfig({
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
-    command: 'VITE_SUPABASE_URL= VITE_SUPABASE_PUBLISHABLE_KEY= VITE_ELEVENLABS_AGENT_ID= npm run dev -- --port 4174',
+    command: 'VITE_LOCAL_DEMO_MODE=false VITE_SUPABASE_URL= VITE_SUPABASE_PUBLISHABLE_KEY= VITE_ELEVENLABS_AGENT_ID= npm run dev -- --port 4174',
     url: 'http://127.0.0.1:4174',
     reuseExistingServer: false,
   },
