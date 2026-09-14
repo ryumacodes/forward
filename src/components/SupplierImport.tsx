@@ -37,6 +37,17 @@ export function SupplierImport({suppliers,onImport,onUpdate,activeRequestId,orga
     try {
       const result=await authoriseVerifiedSupplier(supplier.id)
       onUpdate({...supplier,authorised:true,status:'Authorised',verification:{...result,contactConfirmed:true}})
+      if(!activeRequestId||!organizationId){onCallStarted?.('ABN verification completed and the supplier was authorised. Select a request to start outreach.');return}
+      onCallStarted?.('ABN verification completed. Sending the supplier SMS and queueing Sarah’s call…')
+      const [sms,callResult]=await Promise.allSettled([
+        runProcurementAction('sms_brief',{organizationId,supplierId:supplier.id,requestId:activeRequestId}),
+        enqueueSupplierCalls([supplier.id],activeRequestId),
+      ])
+      const smsStatus=sms.status==='fulfilled'?'SMS sent':`SMS not sent: ${sms.reason instanceof Error?sms.reason.message:'provider unavailable'}`
+      const supplierQueue=callResult.status==='fulfilled'?callResult.value.queue?.find(item=>item.supplier_id===supplier.id):undefined
+      const callStatus=callResult.status==='fulfilled'?(callResult.value.conversationId?'Sarah’s call started':supplierQueue&&['blocked','failed','uncertain'].includes(supplierQueue.status)?`call ${supplierQueue.status}: ${supplierQueue.last_error||'policy check failed'}`:'Sarah’s call queued'):`call not queued: ${callResult.reason instanceof Error?callResult.reason.message:'provider unavailable'}`
+      onCallStarted?.(`Outreach update for ${supplier.name}: ${smsStatus}; ${callStatus}.`)
+      await onQueueChanged?.()
     } catch(err) {setError(err instanceof Error?err.message:'Unable to authorise this supplier.')}
     finally {setWorkingId('')}
   }
@@ -76,7 +87,7 @@ export function SupplierImport({suppliers,onImport,onUpdate,activeRequestId,orga
           {supplier.abn&&<a className="secondary" href={`https://abr.business.gov.au/ABN/View?abn=${supplier.abn}`} target="_blank" rel="noreferrer">View public ABR record <ExternalLink size={14}/></a>}
           {(!supplier.abn||!supplier.phone)&&<button className="secondary" onClick={()=>setCompleting(supplier)}>Complete ABN & contact</button>}
           {!supplier.authorised&&supplier.abn&&supplier.phone&&<button className="secondary" disabled={workingId===supplier.id} onClick={()=>verify(supplier)}>{workingId===supplier.id?'Checking ABR…':verification?'Refresh ABR evidence':'Verify with ABR'}</button>}
-          {!supplier.authorised&&ready&&<button className="primary" disabled={workingId===supplier.id} onClick={()=>authorise(supplier)}>{workingId===supplier.id?'Authorising…':'Confirm contact & authorise'}</button>}
+          {!supplier.authorised&&ready&&<button className="primary" disabled={workingId===supplier.id} onClick={()=>authorise(supplier)}>{workingId===supplier.id?'Starting outreach…':'Authorise & start outreach'}</button>}
           {supplier.authorised&&<button className="primary" disabled={workingId===supplier.id||!activeRequestId} onClick={()=>call(supplier)}><Phone size={14}/>{workingId===supplier.id?'Queueing…':activeRequestId?'Queue next call':'Select a request first'}</button>}
           {supplier.authorised&&supplier.email&&<button className="secondary" disabled={workingId===supplier.id||!activeRequestId} onClick={()=>emailBrief(supplier)}>{workingId===supplier.id?'Sending…':'Email written brief'}</button>}
         </div>

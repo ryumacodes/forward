@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase/client'
 
-export type OutboundCallResult={callId?:string;conversationId?:string;status:'calling'|'queued';queued:number;firstMessage?:string;queueItemId?:string}
+export type OutboundCallResult={callId?:string;conversationId?:string;status:'calling'|'queued';queued:number;firstMessage?:string;queueItemId?:string;queue?:{supplier_id:string;status:string;last_error?:string|null}[]}
 
 export async function startSupplierCall(supplierId:string,requestId:string):Promise<OutboundCallResult>{
   return enqueueSupplierCalls([supplierId],requestId)

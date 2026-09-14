@@ -20,6 +20,7 @@ import { VoiceOrb } from './components/VoiceOrb'
 import { BrandMark } from './components/BrandMark'
 import { initialRequests, offers, money, validateOffer, type ProcurementRequest, type Offer } from './features/requests/data'
 import { sourcingModeLabel } from './features/requests/workflow'
+import { discoverImportAndVerifySuppliers } from './features/discovery/service'
 type Page = 'Overview' | 'Requests' | 'Suppliers' | 'Call activity'
 export default function App() {
   const owner = useOwner()
@@ -45,6 +46,7 @@ export default function App() {
   const [accountBusy, setAccountBusy] = useState(false)
   const accountMenuRef = useRef<HTMLDivElement>(null)
   const accountTriggerRef = useRef<HTMLButtonElement>(null)
+  const screeningRequestIds = useRef(new Set<string>())
   const request = requests.find(r => r.id === selected) ?? {...initialRequests[0],id:'',item:'No request selected',status:'Ready to source' as const}
   const requestOffers=workspaceOffers.filter(offer=>!offer.requestId||offer.requestId===request.id)
   const seeded = !supabase && request.id === 'REQ-024'
@@ -83,6 +85,45 @@ export default function App() {
     const data=await loadWorkspace(organization.id)
     setRequests(data.requests);setImportedSuppliers(data.suppliers);setLiveOffers(data.offers);setCallQueue(data.callQueue);setMembers(data.members)
   }
+  useEffect(() => {
+    const createdFromSarah = notice === 'Request created from Sarah. Start automatic supplier screening.'
+    const demoCreatedFromSarah = notice === 'Request created from Sarah in this demo session.'
+    if (!createdFromSarah && !demoCreatedFromSarah) return
+
+    setPage('Requests')
+    setMobileDetail(true)
+    window.scrollTo({top:0})
+
+    if (!supabase || !organization) {
+      setNotice('Request created and added to Requests. Live supplier and ABN screening needs a connected workspace.')
+      return
+    }
+
+    const createdRequest = requests.find(item => item.id === selected)
+    if (!createdRequest || screeningRequestIds.current.has(createdRequest.id)) return
+    screeningRequestIds.current.add(createdRequest.id)
+    setNotice('Request saved. Finding suppliers and checking public ABNs…')
+    void discoverImportAndVerifySuppliers({
+      request: createdRequest,
+      organizationId: organization.id,
+      onProgress: message => setNotice(message),
+      onImported: async count => {
+        await refreshWorkspace()
+        setPage('Suppliers')
+        setMobileDetail(false)
+        window.scrollTo({top:0})
+        setNotice(`${count} researched supplier${count===1?'':'s'} added. ABN verification has started…`)
+      },
+    }).then(async summary => {
+      await refreshWorkspace()
+      setPage('Suppliers')
+      setMobileDetail(false)
+      setNotice(`ABN verification completed: ${summary.verified} verified, ${summary.needsAbn} need an ABN, ${summary.failed} failed. Choose “Authorise & start outreach” to send the supplier SMS and queue Sarah’s call.`)
+    }).catch(error => {
+      const message = error instanceof Error ? error.message : 'Unknown supplier screening error.'
+      setNotice(`Request saved in Requests. Automatic supplier screening could not finish: ${message}`)
+    })
+  }, [notice, organization, requests, selected])
   const requestStarter=(item:ProcurementRequest)=>item.createdById?item.createdById===owner?.id?'you':item.createdBy||'a team member':undefined
   const myRole=members.find(member=>member.userId===owner?.id)?.role
   const roleLabel=myRole==='owner'?'Workspace owner':myRole==='admin'?'Administrator':supabase?'Workspace member':'Business owner'
@@ -179,7 +220,9 @@ export default function App() {
         setRequests(previous => [r,...previous]); setSelected(r.id); setMobileDetail(true)
         window.scrollTo({top:0}); setPage('Requests'); setTab('Overview')
         if(!options?.keepOpen)setModal(false)
-        notify(supabase ? 'Request saved. Authorise a verified supplier to start live outreach.' : 'Request created for this session. Live supplier calls are not connected in demo mode.')
+        notify(options?.keepOpen
+          ? (supabase ? 'Request created from Sarah. Start automatic supplier screening.' : 'Request created from Sarah in this demo session.')
+          : (supabase ? 'Request saved. Authorise a verified supplier to start live outreach.' : 'Request created and added to Requests. Live supplier calls are not connected in demo mode.'))
       }}
     />}
     {transcript && <TranscriptDialog offer={transcript} onClose={()=>setTranscript(null)}/>}

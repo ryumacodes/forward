@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase/client'
 
-export type ProcurementAction='email_brief'|'request_approval'|'issue_purchase_order'
+export type ProcurementAction='email_brief'|'sms_brief'|'request_approval'|'issue_purchase_order'
 export async function runProcurementAction(action:ProcurementAction,input:{organizationId?:string;requestId?:string;supplierId?:string;quoteId?:string}){
   if(!supabase)throw new Error('Live messages and purchase orders need a connected Supabase workspace.')
   if(!input.organizationId)throw new Error('Select an organisation workspace first.')

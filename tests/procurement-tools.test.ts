@@ -11,7 +11,8 @@ import { clarifyQuestions, applyResponse, confirmIntake } from '../src/features/
 import { intakeClientTools } from '../src/features/intake/agentTools'
 import { supplierLeads } from '../src/data/supplierLeads'
 import { businessNameMatches, parseAbrJsonp, toAbrVerification } from '../src/features/suppliers/abr'
-import { cosineSimilarity, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
+import { cosineSimilarity, extractPublicAbn, extractVisibleText, isPotentiallyPublicUrl, uniquePublicSources } from '../src/features/discovery/evidence'
+import { screenDiscoveredSuppliers } from '../src/features/discovery/service'
 import { supplierRequestedNoContact, supplierTranscript, transcriptText, verifyElevenLabsSignature, voicemailDetected } from '../src/features/voice/webhook'
 import { canPurchase } from '../src/features/requests/ranking'
 import { checkSupplies, allSupplyLeads } from '../src/features/supplycheck/engine'
@@ -24,6 +25,24 @@ test('ABR checksum rejects malformed values and invalid leading digits',()=>{
  expect(checkAbn('51824753557')).toBe(false)
  expect(checkAbn('ABN51824753556')).toBe(false)
  expect(checkAbn('00000000000')).toBe(false)
+})
+test('scraped evidence extracts only checksum-valid public ABNs',()=>{
+ expect(extractPublicAbn('Business details — ABN 51 824 753 556 — Melbourne')).toBe('51824753556')
+ expect(extractPublicAbn('Unverified number 51 824 753 557')).toBeNull()
+ expect(extractPublicAbn('No registry number shown')).toBeNull()
+})
+test('supplier screening imports every lead before starting ABN verification',async()=>{
+ const events:string[]=[]
+ const summary=await screenDiscoveredSuppliers({
+  candidates:[{id:'lead-a'},{id:'lead-b'}],organizationId:'org-1',
+  onImported:count=>{events.push(`imported:${count}`)},
+  operations:{
+   importSupplier:async({evidenceId})=>{events.push(`import:${evidenceId}`);return {id:evidenceId,name:evidenceId,abn:evidenceId==='lead-a'?'51824753556':null}},
+   verifyAbn:async supplierId=>{events.push(`verify:${supplierId}`)},
+  },
+ })
+ expect(events).toEqual(['import:lead-a','import:lead-b','imported:2','verify:lead-a'])
+ expect(summary).toEqual({discovered:2,imported:2,verified:1,needsAbn:1,failed:0})
 })
 test('imports remain unauthorised and reject duplicate ABNs',()=>{
  const supplier=prepareSupplier('Example','51 824 753 556','03 9000 0000',[],'orders@example.com')

@@ -6,7 +6,8 @@ import type { ProcurementRequest } from '../features/requests/data'
 import { normalizeProcurementIntake, type IntakeNormalization } from '../features/intake/normalize'
 import { parseSourcingMode } from '../features/requests/workflow'
 import { requestFromConfirmedVoiceIntake } from '../features/intake/request'
-type Recognition = { lang: string; continuous: boolean; interimResults: boolean; start: () => void; stop: () => void; onresult: ((event: { results: { transcript: string }[][] }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null }
+type RecognitionResult = { isFinal?: boolean; 0: { transcript: string }; length: number }
+type Recognition = { lang: string; continuous: boolean; interimResults: boolean; start: () => void; stop: () => void; onresult: ((event: { resultIndex?: number; results: ArrayLike<RecognitionResult> }) => void) | null; onerror: ((event: { error?: string; message?: string }) => void) | null; onend: (() => void) | null }
 declare global {
   interface Window {
     SpeechRecognition?: new () => Recognition
@@ -50,17 +51,39 @@ export function NewRequest({ onClose, onCreate }: { onClose: () => void; onCreat
   useEffect(() => {
     if (details) dialog.current?.querySelector<HTMLInputElement>('input[name="item"]')?.focus()
   }, [details])
-  function listen() {
+  async function listen() {
     if (agent.configured) { void agent.toggle(); return }
     if (listening) { recognition.current?.stop(); return }
     const API = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!API) { setMessage('Voice input is unavailable in this browser. Type your request below.'); return }
+    if (!API) { setMessage('This browser does not support voice dictation. Open SourcePilot in Chrome or Safari, or type your request below.'); return }
+    if (!navigator.mediaDevices?.getUserMedia) { setMessage('This browser cannot access a microphone. Check the browser and site permissions, or type your request below.'); return }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true})
+      stream.getTracks().forEach(track => track.stop())
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : ''
+      setMessage(name === 'NotAllowedError' || name === 'SecurityError'
+        ? 'Microphone access is blocked. Allow microphone access for this site, then try again.'
+        : name === 'NotFoundError'
+          ? 'No microphone was found. Connect or enable a microphone, or type your request below.'
+          : 'The microphone could not be opened. Check browser permissions and your audio input, then try again.')
+      return
+    }
     const instance = new API(); recognition.current = instance
-    instance.lang = 'en-AU'; instance.continuous = false; instance.interimResults = false
-    instance.onresult = event => { setBrief(previous => `${previous} ${event.results[0][0].transcript}`.trim()); setMessage('Request captured. Add the details below to prepare this demo request.') }
-    instance.onerror = () => { setListening(false); setMessage('Microphone unavailable. Check browser permissions or type your request.') }
+    instance.lang = 'en-AU'; instance.continuous = true; instance.interimResults = false
+    instance.onresult = event => {
+      const transcripts = Array.from(event.results).slice(event.resultIndex ?? 0).filter(result => result.isFinal !== false).map(result => result[0]?.transcript?.trim()).filter(Boolean)
+      if (!transcripts.length) return
+      setBrief(previous => `${previous} ${transcripts.join(' ')}`.trim())
+      setMessage('I heard you. Keep talking, or stop listening and review the structured request.')
+    }
+    instance.onerror = event => {
+      setListening(false)
+      const errors:Record<string,string> = {'not-allowed':'Microphone access is blocked. Allow it for this site, then try again.','service-not-allowed':'Browser speech recognition is blocked. Check site permissions, or type your request below.','audio-capture':'No working microphone was detected. Check your audio input, then try again.','no-speech':'I could not hear speech. Move closer to the microphone and try again.',network:'Browser speech recognition could not reach its service. Check your connection, or type your request below.',aborted:'Voice capture stopped.'}
+      setMessage(errors[event.error ?? ''] ?? 'Voice capture stopped unexpectedly. Check microphone permissions, then try again.')
+    }
     instance.onend = () => setListening(false)
-    try { instance.start(); setListening(true); setMessage('Listening…') } catch { setMessage('Unable to start the microphone. You can type instead.') }
+    try { instance.start(); setListening(true); setMessage('Listening… Speak naturally, then press stop when you are finished.') } catch { setMessage('Unable to start the microphone. You can type instead.') }
   }
   async function reviewRequest() {
     if(normalizing)return
@@ -98,6 +121,7 @@ export function NewRequest({ onClose, onCreate }: { onClose: () => void; onCreat
     <p className="muted">{details ? 'Check the structured details before Sarah starts sourcing.' : active ? voiceLabel.split(' ·')[0] : 'Tell Sarah what you need, naturally.'}</p>
     <button type="button" className={`voice-capture ${active ? 'listening' : ''}`} onClick={listen} disabled={agent.configured && !agent.ready} aria-pressed={active} aria-label={voiceLabel}><VoiceOrb listening={listening} signal={agent.configured ? agent.signal : undefined} size={224}/><strong>{voiceLabel}</strong><span>“30 kilos of chicken tomorrow before 8, max $350.”</span></button>
     <label className="brief-label"><span>Your request</span><textarea value={brief} onChange={e => {setBrief(e.target.value);briefRef.current=e.target.value;setNormalization(null)}} placeholder="Message Sarah…" rows={3}/></label>
+    <p className="voice-runtime" aria-label="Voice connection">{agent.configured ? 'Sarah live conversation · ElevenLabs' : 'Browser dictation fallback · Sarah voice service is not configured'}</p>
     {agent.configured && <p className="voice-message" role={agent.signal.state === 'error' ? 'alert' : 'status'}>{agent.signal.state === 'error' ? agent.errorMessage : `ElevenLabs conversation · ${agent.signal.state}`}</p>}
     {message && <p className="voice-message" role="status">{message}</p>}
     <details className="request-preferences"><summary>Auto-buy & payment rules</summary><div className="form-note"><ShieldCheck size={20}/><span>Only exact quotes from your authorised, ABN-verified suppliers can use these rules.<br/><small>No substitutions, missing terms, or over-budget orders.</small></span></div>
